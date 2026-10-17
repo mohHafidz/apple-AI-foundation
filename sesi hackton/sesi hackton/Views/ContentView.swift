@@ -14,14 +14,32 @@ struct ContentView: View {
         case results
     }
 
+    private enum ResultTab: String, CaseIterable, Identifiable {
+        case aiPlan = "Rencana AI"
+        case detection = "Hasil Deteksi"
+
+        var id: String { rawValue }
+    }
+
     @State private var stage: AppStage = .scanning
     @State private var cameraManager = FacePoseCameraManager()
     @State private var scanResults: [FaceSideScanResult] = []
 
-    // State untuk halaman Hasil Analisis
+    // AI Services
+    @StateObject private var llmService = FoundationLLMService()
+    @StateObject private var speechService = SpeechService()
+    @StateObject private var calendarService = CalendarService()
+
+    // State untuk halaman Hasil
+    @State private var selectedResultTab: ResultTab = .aiPlan
     @State private var showAnnotations: Bool = true
     @State private var selectedSideFilter: FaceSide = .front
     @State private var showPhotoPreviewSheet: Bool = false
+    @State private var showNoHistoryAlert: Bool = false
+
+    // Tanggal target untuk ekspor jadwal kalender (Default: Besok)
+    @State private var targetCalendarDate: Date =
+        Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
 
     var body: some View {
         NavigationStack {
@@ -39,6 +57,14 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 toolbarContent
+            }
+            .alert("Belum Ada Riwayat Deteksi", isPresented: $showNoHistoryAlert) {
+                Button("Jalankan Demo") {
+                    runDemoSimulation()
+                }
+                Button("Batal", role: .cancel) {}
+            } message: {
+                Text("Lakukan pemindaian wajah 3 sisi terlebih dahulu atau gunakan mode Demo untuk melihat rencana gaya hidup AI.")
             }
             .onChange(of: cameraManager.isAllCaptured) { _, allDone in
                 if allDone && stage == .scanning {
@@ -87,7 +113,7 @@ struct ContentView: View {
         case .analyzing:
             return "Menganalisis..."
         case .results:
-            return "Hasil Analisis Jerawat"
+            return selectedResultTab == .aiPlan ? "Rencana Pemulihan AI" : "Hasil Deteksi Jerawat"
         }
     }
 
@@ -104,10 +130,23 @@ struct ContentView: View {
             }
 
             ToolbarItemGroup(placement: .topBarTrailing) {
+                // Tombol Logo AI untuk mengecek riwayat deteksi & rencana gaya hidup
+                Button {
+                    if !scanResults.isEmpty || llmService.currentPlan != nil {
+                        stage = .results
+                    } else {
+                        showNoHistoryAlert = true
+                    }
+                } label: {
+                    Label("Riwayat AI", systemImage: "sparkles")
+                }
+                .tint(.purple)
+                .accessibilityLabel("Cek Riwayat Deteksi AI")
+
                 Button {
                     runDemoSimulation()
                 } label: {
-                    Label("Demo", systemImage: "sparkles")
+                    Label("Demo", systemImage: "play.circle")
                 }
 
                 if !cameraManager.capturedImages.isEmpty {
@@ -126,8 +165,8 @@ struct ContentView: View {
         case .results:
             ToolbarItem(placement: .topBarLeading) {
                 Button {
+                    speechService.stop()
                     cameraManager.resetAllCaptures()
-                    scanResults.removeAll()
                     stage = .scanning
                     cameraManager.checkPermissionAndStart()
                 } label: {
@@ -136,24 +175,36 @@ struct ContentView: View {
             }
 
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    showAnnotations.toggle()
-                } label: {
-                    Label(
-                        showAnnotations ? "Sembunyikan Box" : "Tampilkan Box",
-                        systemImage: showAnnotations ? "viewfinder.circle.fill" : "viewfinder.circle"
-                    )
+                if selectedResultTab == .detection {
+                    Button {
+                        showAnnotations.toggle()
+                    } label: {
+                        Label(
+                            showAnnotations ? "Sembunyikan Box" : "Tampilkan Box",
+                            systemImage: showAnnotations ? "viewfinder.circle.fill" : "viewfinder.circle"
+                        )
+                    }
+                    .accessibilityLabel("Toggle Bounding Box")
+                } else if selectedResultTab == .aiPlan {
+                    Button {
+                        if speechService.isSpeaking {
+                            speechService.stop()
+                        } else if let plan = llmService.currentPlan {
+                            speechService.speakIndonesian(plan.ttsSummaryScript)
+                        }
+                    } label: {
+                        Image(systemName: speechService.isSpeaking ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    }
+                    .accessibilityLabel("Kontrol Suara AI")
                 }
-                .accessibilityLabel("Toggle Bounding Box")
             }
         }
     }
 
-    // MARK: - 1. Layar Scan 3 Sisi Wajah (1 Metode: Hold Button + Cek Jarak Ideal)
+    // MARK: - 1. Layar Scan 3 Sisi Wajah
 
     private var scannerScreen: some View {
         VStack(spacing: 0) {
-            // Segmented Picker standar HIG untuk berpindah/melihat sisi wajah
             Picker("Sisi Wajah", selection: $cameraManager.currentTargetSide) {
                 ForEach(FaceSide.allCases) { side in
                     let done = cameraManager.capturedImages[side] != nil
@@ -186,10 +237,8 @@ struct ContentView: View {
                     }
                 }
 
-                // Panduan Jarak Wajah & Banner Instruksi dengan Liquid Glass
                 faceDistanceOverlay
 
-                // Efek Flash saat memotret
                 if cameraManager.showCaptureFlash {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .fill(.white.opacity(0.85))
@@ -199,10 +248,8 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 16)
 
-            // Kontrol Bawah: Status 3 Sisi + 1 Tombol Hold (Tahan untuk Memotret)
             VStack(spacing: 14) {
                 capturedSidesStatusRow
-
                 holdToCaptureControl
             }
             .padding(.horizontal, 20)
@@ -214,12 +261,12 @@ struct ContentView: View {
         }
         .onDisappear {
             cameraManager.stopSession()
+            speechService.stop()
         }
     }
 
     private var faceDistanceOverlay: some View {
         VStack {
-            // Pill Instruksi Sisi Wajah di atas kamera dengan Liquid Glass
             HStack(spacing: 10) {
                 Image(systemName: cameraManager.currentTargetSide.systemIcon)
                     .font(.headline)
@@ -241,7 +288,6 @@ struct ContentView: View {
 
             Spacer()
 
-            // Bingkai Elips Panduan Jarak Wajah + Ring Progress saat Tombol Ditahan
             if cameraManager.isCameraAuthorized {
                 ZStack {
                     Ellipse()
@@ -271,7 +317,6 @@ struct ContentView: View {
 
             Spacer()
 
-            // Indikator Jarak Wajah Real-time (Terlalu Dekat / Terlalu Jauh / Jarak Ideal)
             if cameraManager.isCameraAuthorized {
                 HStack(spacing: 8) {
                     Image(systemName: cameraManager.distanceStatus.systemIcon)
@@ -299,14 +344,12 @@ struct ContentView: View {
         }
     }
 
-    /// Satu metode tombol: Tahan (Hold) untuk memotret saat jarak wajah tidak terlalu dekat/jauh
     private var holdToCaptureControl: some View {
         let isOptimal = cameraManager.distanceStatus == .optimal
         let isHolding = cameraManager.isHoldingCaptureButton
 
         return VStack(spacing: 6) {
             ZStack {
-                // Cincin luar dengan progress melingkar saat ditahan
                 Circle()
                     .strokeBorder(
                         isOptimal ? Color.green.opacity(0.45) : Color.primary.opacity(0.25),
@@ -325,7 +368,6 @@ struct ContentView: View {
                         .rotationEffect(.degrees(-90))
                 }
 
-                // Lingkaran dalam yang mengecil sedikit saat ditekan & ditahan
                 Circle()
                     .fill(isOptimal ? Color.green : Color.primary)
                     .frame(width: 62, height: 62)
@@ -409,59 +451,178 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - 2. Layar Loading Analisis CoreML
+    // MARK: - 2. Layar Loading Analisis CoreML + Foundation AI
 
     private var analyzingScreen: some View {
-        ContentUnavailableView {
+        VStack(spacing: 18) {
             ProgressView()
                 .controlSize(.large)
-                .padding(.bottom, 8)
-            Text("Menganalisis 3 Sisi Wajah")
-        } description: {
-            Text("Model best_yolo_acne sedang mengidentifikasi objek jerawat dan memilih persentase keyakinan tertinggi.")
+            VStack(spacing: 6) {
+                Text("Menganalisis Wajah & Menyusun Rencana AI...")
+                    .font(.headline)
+                Text("Model CoreML sedang menghitung deteksi jerawat, lalu Foundation AI merancang panduan nutrisi, suara, dan jadwal kalender.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    // MARK: - 3. Layar Hasil Terpadu (Rencana AI + Hasil Deteksi)
+
+    private var resultsScreen: some View {
+        VStack(spacing: 0) {
+            // Segmented Picker untuk beralih antara Rencana AI dan Detail Bounding Box Deteksi
+            Picker("Mode Tampilan", selection: $selectedResultTab) {
+                ForEach(ResultTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color(uiColor: .systemGroupedBackground))
+
+            if selectedResultTab == .aiPlan {
+                aiPlanView
+            } else {
+                detectionResultsView
+            }
         }
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    // MARK: - 3. Layar Hasil Deteksi 2D (HIG Inset Grouped List)
+    // MARK: - Tab Konten: Rencana Pemulihan AI
+    private var aiPlanView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                if let plan = llmService.currentPlan {
+                    // Response 2: Banner Suara Otomatis (Gimmick Malas Baca)
+                    TTSBannerView(
+                        scriptText: plan.ttsSummaryScript,
+                        isSpeaking: speechService.isSpeaking,
+                        onPlay: {
+                            speechService.speakIndonesian(plan.ttsSummaryScript)
+                        },
+                        onStop: { speechService.stop() }
+                    )
 
-    private var resultsScreen: some View {
-        List {
-            // Section Utama: Hubungkan ke Foundation LLM + Calendar + TTS
-            Section {
-                NavigationLink {
-                    MainDashboardView(initialDetections: detectedAcneItemsFromScan)
-                } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "sparkles")
-                            .font(.title2)
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
+                    // Response 1: Panduan Nutrisi & Pola Hidup Markdown
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Panduan Pola Hidup & Nutrisi", systemImage: "leaf.fill")
+                            .font(.headline)
+                            .foregroundStyle(.green)
+
+                        Text(renderMarkdown(plan.detailedGuideMarkdown))
+                            .font(.body)
+                            .lineSpacing(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
                             .background(
-                                LinearGradient(
-                                    colors: [.green, .mint],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 12)
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
                             )
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Buat Rencana Pemulihan AI")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                            Text("Panduan nutrisi, jadwal Apple Calendar, dan ringkasan suara")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                     }
-                    .padding(.vertical, 4)
-                }
-            } header: {
-                Text("Langkah Selanjutnya")
-            }
 
-            // Section 1: Pilih Sisi Wajah & Foto Hasil Bounding Box
+                    // Response 3: Rencana Jadwal Harian & Apple Calendar
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label("Jadwal Harian Rekomendasi", systemImage: "calendar.badge.clock")
+                                .font(.headline)
+                            Spacer()
+                            DatePicker(
+                                "Target:",
+                                selection: $targetCalendarDate,
+                                displayedComponents: .date
+                            )
+                            .labelsHidden()
+                            .controlSize(.small)
+                        }
+
+                        VStack(spacing: 8) {
+                            ForEach(plan.dailySchedules) { schedule in
+                                ScheduleCardView(item: schedule)
+                            }
+                        }
+
+                        // Tombol Export EventKit ke Apple Calendar
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Button {
+                                    Task {
+                                        await calendarService.exportSchedulesToAppleCalendar(
+                                            plan.dailySchedules,
+                                            targetDate: targetCalendarDate
+                                        )
+                                    }
+                                } label: {
+                                    Label("Simpan ke Apple Calendar", systemImage: "calendar.badge.plus")
+                                        .font(.subheadline.weight(.semibold))
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.green)
+                                .controlSize(.regular)
+
+                                if calendarService.isExportSuccess {
+                                    Button("Buka Kalender") {
+                                        calendarService.openAppleCalendarApp()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.regular)
+                                }
+                            }
+
+                            if !calendarService.exportMessage.isEmpty {
+                                Text(calendarService.exportMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(calendarService.isExportSuccess ? .green : .orange)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+
+                    // Footer Status Log Foundation Models
+                    HStack {
+                        Image(systemName: "cpu")
+                            .foregroundStyle(.secondary)
+                        Text(llmService.statusLog)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+
+                } else if llmService.isGenerating {
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .controlSize(.large)
+                        Text("AI sedang menyusun rencana nutrisi dan jadwal...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 50)
+                } else {
+                    ContentUnavailableView(
+                        "Belum Ada Rencana AI",
+                        systemImage: "sparkles",
+                        description: Text("Lakukan pemindaian wajah atau jalankan demo untuk membuat rencana pola hidup AI.")
+                    )
+                    .padding(.vertical, 50)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Tab Konten: Hasil Deteksi Wajah CoreML
+    private var detectionResultsView: some View {
+        List {
             if let currentResult = scanResults.first(where: { $0.side == selectedSideFilter }) ?? scanResults.first {
                 Section {
                     VStack(spacing: 12) {
@@ -493,7 +654,6 @@ struct ContentView: View {
                     Text("Hasil Foto & Bounding Box")
                 }
 
-                // Section 2: Daftar Objek & Kemungkinan (Persis seperti Gambar Referensi + HIG Inset Card)
                 Section {
                     if currentResult.detections.isEmpty {
                         Label("Tidak ditemukan jerawat pada sisi \(currentResult.side.rawValue).", systemImage: "checkmark.circle.fill")
@@ -506,11 +666,10 @@ struct ContentView: View {
                 } header: {
                     Text("Hasil Identifikasi Objek (\(currentResult.side.rawValue))")
                 } footer: {
-                    Text("Setiap objek menampilkan daftar kemungkinan dari model dan secara otomatis mengambil persentase keyakinan (confidence) tertinggi.")
+                    Text("Setiap objek menampilkan daftar kemungkinan dari model CoreML dengan persentase keyakinan tertinggi.")
                 }
             }
 
-            // Section 3: Legenda Warna Bounding Box & Ringkasan Jumlah
             Section("Kategori & Warna Bounding Box") {
                 let allDetections = scanResults.flatMap(\.detections)
                 ForEach([AcneType.whitehead, .pustule, .papule, .nodule, .blackhead]) { type in
@@ -598,7 +757,7 @@ struct ContentView: View {
         .padding(.vertical, 4)
     }
 
-    // MARK: - Konversi Hasil Deteksi YOLO ke AcneDetectionInput (Untuk Foundation LLM)
+    // MARK: - Konversi Hasil Deteksi YOLO ke AcneDetectionInput (Untuk Foundation AI)
     private var detectedAcneItemsFromScan: [DetectedAcneItem] {
         var items: [DetectedAcneItem] = []
         for result in scanResults {
@@ -624,7 +783,7 @@ struct ContentView: View {
         if items.isEmpty {
             items.append(
                 DetectedAcneItem(
-                    acneType: "Kondisi Kulit Bersih",
+                    acneType: "Kondisi Kulit Relatif Bersih",
                     facialArea: "Seluruh Wajah",
                     count: 0,
                     confidence: 0.99
@@ -643,20 +802,54 @@ struct ContentView: View {
         let imagesToAnalyze = cameraManager.capturedImages
         Task {
             let results = await AcneAnalyzerService.shared.analyzeAllSides(capturedImages: imagesToAnalyze)
+            self.scanResults = results
+            self.selectedSideFilter = results.first?.side ?? .front
+
+            let items = self.detectedAcneItemsFromScan
+            await llmService.generateCompletePlan(from: items)
+
             await MainActor.run {
-                self.scanResults = results
-                self.selectedSideFilter = results.first?.side ?? .front
+                self.selectedResultTab = .aiPlan
                 self.stage = .results
+                if let script = llmService.currentPlan?.ttsSummaryScript {
+                    speechService.speakIndonesian(script)
+                }
             }
         }
     }
 
     private func runDemoSimulation() {
         cameraManager.stopSession()
+        stage = .analyzing
+
         let demoResults = DemoSampleGenerator.makeDemoScanResults()
         self.scanResults = demoResults
         self.selectedSideFilter = .front
-        self.stage = .results
+
+        Task {
+            let items = self.detectedAcneItemsFromScan
+            await llmService.generateCompletePlan(from: items)
+
+            await MainActor.run {
+                self.selectedResultTab = .aiPlan
+                self.stage = .results
+                if let script = llmService.currentPlan?.ttsSummaryScript {
+                    speechService.speakIndonesian(script)
+                }
+            }
+        }
+    }
+
+    private func renderMarkdown(_ rawMarkdown: String) -> AttributedString {
+        if let attributed = try? AttributedString(
+            markdown: rawMarkdown,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        ) {
+            return attributed
+        }
+        return AttributedString(rawMarkdown)
     }
 }
 
