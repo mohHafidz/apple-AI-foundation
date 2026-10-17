@@ -286,6 +286,21 @@ struct ContentView: View {
             .padding(.top, 14)
             .padding(.horizontal, 16)
 
+            if let activeEffects = cameraManager.activeSystemEffectsDescription {
+                Button {
+                    cameraManager.openSystemVideoEffectsSettings()
+                } label: {
+                    Label("Efek \(activeEffects) Aktif • Ketuk untuk Matikan", systemImage: "wand.and.stars.inverse")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .glassEffect(.regular, in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+
             Spacer()
 
             if cameraManager.isCameraAuthorized {
