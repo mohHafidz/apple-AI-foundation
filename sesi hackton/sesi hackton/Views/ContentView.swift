@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 struct ContentView: View {
     private enum AppStage {
@@ -40,6 +41,13 @@ struct ContentView: View {
     // Tanggal target untuk ekspor jadwal kalender (Default: Besok)
     @State private var targetCalendarDate: Date =
         Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+    
+    @State private var pickedPhotoItems: [PhotosPickerItem] = []
+    @State private var isImportingPhotos: Bool = false
+    
+    private var remainingSidesCount: Int {
+        FaceSide.allCases.filter { cameraManager.capturedImages[$0] == nil }.count
+    }
 
     var body: some View {
         NavigationStack {
@@ -259,10 +267,28 @@ struct ContentView: View {
         .onAppear {
             cameraManager.checkPermissionAndStart()
         }
+        .onChange(of: pickedPhotoItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task { await loadPickedPhotos(items) }
+        }
         .onDisappear {
             cameraManager.stopSession()
             speechService.stop()
         }
+    }
+    
+    private func loadPickedPhotos(_ items: [PhotosPickerItem]) async {
+        isImportingPhotos = true
+        var images: [UIImage] = []
+        for item in items {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let image = UIImage(data: data) {
+                images.append(image)
+            }
+        }
+        cameraManager.importImagesFromLibrary(images)
+        pickedPhotoItems = []  // reset biar bisa pilih lagi
+        isImportingPhotos = false
     }
 
     private var faceDistanceOverlay: some View {
@@ -364,57 +390,81 @@ struct ContentView: View {
         let isHolding = cameraManager.isHoldingCaptureButton
 
         return VStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .strokeBorder(
-                        isOptimal ? Color.green.opacity(0.45) : Color.primary.opacity(0.25),
-                        lineWidth: 4
-                    )
-                    .frame(width: 78, height: 78)
-
-                if cameraManager.holdProgress > 0 {
+            HStack(spacing: 28) {
+                PhotosPicker(
+                    selection: $pickedPhotoItems,
+                    maxSelectionCount: max(1, remainingSidesCount),
+                    selectionBehavior: .ordered,
+                    matching: .images
+                ) {
+                    Group {
+                        if isImportingPhotos {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.title3)
+                        }
+                    }
+                    .frame(width: 52, height: 52)
+                    .glassEffect(.regular, in: .circle)
+                }
+                .disabled(remainingSidesCount == 0 || isImportingPhotos)
+                .accessibilityLabel("Pilih foto wajah dari galeri")
+                ZStack {
                     Circle()
-                        .trim(from: 0, to: cameraManager.holdProgress)
-                        .stroke(
-                            Color.green,
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                        .strokeBorder(
+                            isOptimal ? Color.green.opacity(0.45) : Color.primary.opacity(0.25),
+                            lineWidth: 4
                         )
                         .frame(width: 78, height: 78)
-                        .rotationEffect(.degrees(-90))
+                    
+                    if cameraManager.holdProgress > 0 {
+                        Circle()
+                            .trim(from: 0, to: cameraManager.holdProgress)
+                            .stroke(
+                                Color.green,
+                                style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                            )
+                            .frame(width: 78, height: 78)
+                            .rotationEffect(.degrees(-90))
+                    }
+                    
+                    Circle()
+                        .fill(isOptimal ? Color.green : Color.primary)
+                        .frame(width: 62, height: 62)
+                        .scaleEffect(isHolding ? 0.86 : 1.0)
+                        .animation(.spring(duration: 0.2), value: isHolding)
+                    
+                    Image(systemName: isHolding ? "hand.tap.fill" : "camera.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(isOptimal ? .white : Color(uiColor: .systemBackground))
                 }
-
-                Circle()
-                    .fill(isOptimal ? Color.green : Color.primary)
-                    .frame(width: 62, height: 62)
-                    .scaleEffect(isHolding ? 0.86 : 1.0)
-                    .animation(.spring(duration: 0.2), value: isHolding)
-
-                Image(systemName: isHolding ? "hand.tap.fill" : "camera.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(isOptimal ? .white : Color(uiColor: .systemBackground))
+                .contentShape(Circle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            cameraManager.setHoldingCaptureButton(true)
+                        }
+                        .onEnded { _ in
+                            cameraManager.setHoldingCaptureButton(false)
+                        }
+                )
+                .accessibilityLabel("Tahan tombol untuk memotret sisi \(cameraManager.currentTargetSide.rawValue)")
+                .accessibilityHint("Pastikan jarak wajah ideal, tidak terlalu dekat dan tidak terlalu jauh")
+                
+                Text(
+                    isHolding
+                    ? (isOptimal ? "Tahan sebentar..." : "Sesuaikan jarak wajah sambil menahan")
+                    : "Tahan tombol untuk memotret \(cameraManager.currentTargetSide.rawValue)"
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(isHolding && !isOptimal ? .orange : .secondary)
             }
-            .contentShape(Circle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        cameraManager.setHoldingCaptureButton(true)
-                    }
-                    .onEnded { _ in
-                        cameraManager.setHoldingCaptureButton(false)
-                    }
-            )
-            .accessibilityLabel("Tahan tombol untuk memotret sisi \(cameraManager.currentTargetSide.rawValue)")
-            .accessibilityHint("Pastikan jarak wajah ideal, tidak terlalu dekat dan tidak terlalu jauh")
-
-            Text(
-                isHolding
-                ? (isOptimal ? "Tahan sebentar..." : "Sesuaikan jarak wajah sambil menahan")
-                : "Tahan tombol untuk memotret \(cameraManager.currentTargetSide.rawValue)"
-            )
-            .font(.caption.weight(.medium))
-            .foregroundStyle(isHolding && !isOptimal ? .orange : .secondary)
+            Color.clear.frame(width: 52, height: 52)
         }
     }
+    
+    
 
     private var capturedSidesStatusRow: some View {
         HStack(spacing: 10) {

@@ -224,8 +224,14 @@ final class FacePoseCameraManager: NSObject {
             }
 
             // 5. Matikan Face-Driven Auto Focus bila didukung agar fokus tetap konsisten di bidang gambar
-            device.automaticallyAdjustsFaceDrivenAutoFocusEnabled = false
-            device.isFaceDrivenAutoFocusEnabled = false
+            let supportsAutoFocus = device.isFocusModeSupported(.autoFocus)
+            || device.isFocusModeSupported(.continuousAutoFocus)
+            
+            if supportsAutoFocus {
+                device.automaticallyAdjustsFaceDrivenAutoFocusEnabled = false
+                device.isFaceDrivenAutoFocusEnabled = false
+            }
+            
             if device.isFocusModeSupported(.continuousAutoFocus) {
                 device.focusMode = .continuousAutoFocus
             }
@@ -406,6 +412,16 @@ final class FacePoseCameraManager: NSObject {
         isHoldingCaptureButton = false
         isHoldingSnapshot = false
         isCooldownActive = false
+    }
+    
+    func importImagesFromLibrary(_ images: [UIImage]) {
+        let emptySides = FaceSide.allCases.filter { capturedImages[$0] == nil }
+        for (side, image) in zip(emptySides, images) {
+            capturedImages[side] = image.normalizedUpImage()
+        }
+        if let nextSide = FaceSide.allCases.first(where: { capturedImages[$0] == nil }) {
+            currentTargetSide = nextSide
+        }
     }
 }
 
