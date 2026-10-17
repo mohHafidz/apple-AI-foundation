@@ -113,6 +113,15 @@ final class FacePoseCameraManager: NSObject {
 
             self.session.addInput(input)
 
+            // Nonaktifkan efek Cinematic Video (blur/depth sintetis) bila didukung
+            if input.isCinematicVideoCaptureSupported {
+                input.isCinematicVideoCaptureEnabled = false
+            }
+
+            // Matikan Auto-HDR & pemrosesan tambahan pada perangkat kamera
+            // (dilakukan setelah addInput & sessionPreset agar tidak ter-reset)
+            self.configureUnprocessedCameraHardware(for: cameraDevice)
+
             self.videoOutput.alwaysDiscardsLateVideoFrames = true
             self.videoOutput.videoSettings = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
@@ -130,6 +139,10 @@ final class FacePoseCameraManager: NSObject {
                 if cameraDevice.position == .front, connection.isVideoMirroringSupported {
                     connection.isVideoMirrored = true
                 }
+                // Matikan stabilisasi video agar frame tidak mengalami resampling/penghalusan piksel
+                if connection.isVideoStabilizationSupported {
+                    connection.preferredVideoStabilizationMode = .off
+                }
             }
 
             self.session.commitConfiguration()
@@ -138,6 +151,38 @@ final class FacePoseCameraManager: NSObject {
             Task { @MainActor in
                 self.isSessionRunning = true
             }
+        }
+    }
+
+    /// Matikan Auto-HDR, Local Tone Mapping, Low-Light Boost, dan Center Stage
+    /// agar tekstur dan warna kulit terekam apa adanya tanpa penghalusan tambahan.
+    nonisolated private func configureUnprocessedCameraHardware(for device: AVCaptureDevice) {
+        // Nonaktifkan Center Stage agar kamera tidak melakukan digital zoom/upscaling otomatis
+        if AVCaptureDevice.centerStageControlMode == .cooperative || AVCaptureDevice.centerStageControlMode == .app {
+            AVCaptureDevice.isCenterStageEnabled = false
+        }
+
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+
+            // 1. Matikan Auto-HDR & Video HDR agar kontras/kemerahan jerawat tidak diratakan
+            device.automaticallyAdjustsVideoHDREnabled = false
+            if device.activeFormat.isVideoHDRSupported {
+                device.isVideoHDREnabled = false
+            }
+
+            // 2. Gunakan Global Tone Mapping untuk mematikan local tone mapping per-piksel & image fusion
+            if device.activeFormat.isGlobalToneMappingSupported {
+                device.isGlobalToneMappingEnabled = true
+            }
+
+            // 3. Matikan Low-Light Boost otomatis agar tidak terjadi noise smoothing agresif
+            if device.isLowLightBoostSupported {
+                device.automaticallyEnablesLowLightBoostWhenAvailable = false
+            }
+        } catch {
+            print("Gagal mengonfigurasi hardware kamera tanpa pemrosesan: \(error.localizedDescription)")
         }
     }
 
