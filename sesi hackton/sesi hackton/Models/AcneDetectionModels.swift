@@ -8,7 +8,7 @@
 import SwiftUI
 import UIKit
 
-/// Status jarak wajah terhadap kamera berdasarkan ukuran bounding box wajah
+/// Status jarak fokus area kulit/wajah terhadap kamera
 enum FaceDistanceStatus: Equatable {
     case noFace
     case tooFar
@@ -18,13 +18,13 @@ enum FaceDistanceStatus: Equatable {
     var title: String {
         switch self {
         case .noFace:
-            return "Wajah Belum Terdeteksi"
+            return "Area Wajah Belum Terdeteksi"
         case .tooFar:
-            return "Terlalu Jauh — Dekatkan Wajah"
+            return "Terlalu Jauh — Dekatkan Area ke Bingkai"
         case .tooClose:
             return "Terlalu Dekat — Jauhkan Sedikit"
         case .optimal:
-            return "Jarak Ideal"
+            return "Jarak Close-Up Ideal"
         }
     }
 
@@ -53,44 +53,84 @@ enum FaceDistanceStatus: Equatable {
     }
 }
 
-/// Sisi wajah yang dipindai
+/// 5 Area fokus wajah yang dipindai secara close-up:
+/// Pipi Kiri, Pipi Kanan, Dahi, Hidung, dan Mulut (sekitar mulut & dagu).
 enum FaceSide: String, CaseIterable, Identifiable {
-    case front = "Depan"
-    case right = "Samping Kanan"
-    case left = "Samping Kiri"
+    case leftCheek = "Pipi Kiri"
+    case rightCheek = "Pipi Kanan"
+    case forehead = "Dahi"
+    case nose = "Hidung"
+    case mouth = "Mulut"
 
     var id: String { rawValue }
 
+    var shortTabTitle: String {
+        switch self {
+        case .leftCheek: return "Pipi Kiri"
+        case .rightCheek: return "Pipi Kanan"
+        case .forehead: return "Dahi"
+        case .nose: return "Hidung"
+        case .mouth: return "Mulut"
+        }
+    }
+
     var instructionTitle: String {
         switch self {
-        case .front:
-            return "Sisi Depan Wajah"
-        case .right:
-            return "Sisi Kanan Wajah"
-        case .left:
-            return "Sisi Kiri Wajah"
+        case .leftCheek:
+            return "Scan Area Pipi Kiri"
+        case .rightCheek:
+            return "Scan Area Pipi Kanan"
+        case .forehead:
+            return "Scan Area Dahi"
+        case .nose:
+            return "Scan Area Hidung"
+        case .mouth:
+            return "Scan Area Mulut & Dagu"
         }
     }
 
     var instructionSubtitle: String {
         switch self {
-        case .front:
-            return "Hadapkan wajah lurus ke depan lalu tahan tombol untuk memotret"
-        case .right:
-            return "Tolehkan wajah ke kiri (pipi kanan) lalu tahan tombol untuk memotret"
-        case .left:
-            return "Tolehkan wajah ke kanan (pipi kiri) lalu tahan tombol untuk memotret"
+        case .leftCheek:
+            return "Toleh sedikit ke kanan dan paskan kulit pipi kiri di dalam bingkai"
+        case .rightCheek:
+            return "Toleh sedikit ke kiri dan paskan kulit pipi kanan di dalam bingkai"
+        case .forehead:
+            return "Arahkan kamera ke area dahi di atas alis hingga memenuhi bingkai"
+        case .nose:
+            return "Fokuskan batang dan cuping hidung tepat di tengah bingkai panduan"
+        case .mouth:
+            return "Fokuskan area sekitar bibir, bawah hidung, hingga dagu di dalam bingkai"
+        }
+    }
+
+    var guidelineHint: String {
+        switch self {
+        case .leftCheek:
+            return "Langkah 1/5 • Fokuskan tekstur kulit Pipi Kiri"
+        case .rightCheek:
+            return "Langkah 2/5 • Fokuskan tekstur kulit Pipi Kanan"
+        case .forehead:
+            return "Langkah 3/5 • Posisikan Dahi di atas garis alis"
+        case .nose:
+            return "Langkah 4/5 • Dekatkan area Hidung & pori-pori tengah"
+        case .mouth:
+            return "Langkah 5/5 • Posisikan area sekitar Mulut & Dagu"
         }
     }
 
     var systemIcon: String {
         switch self {
-        case .front:
-            return "face.smiling"
-        case .right:
-            return "arrow.turn.up.left"
-        case .left:
-            return "arrow.turn.up.right"
+        case .leftCheek:
+            return "chevron.left.square.fill"
+        case .rightCheek:
+            return "chevron.right.square.fill"
+        case .forehead:
+            return "rectangle.topthird.inset.filled"
+        case .nose:
+            return "viewfinder.circle.fill"
+        case .mouth:
+            return "rectangle.bottomthird.inset.filled"
         }
     }
 }
@@ -144,7 +184,7 @@ enum AcneType: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Warna UIKit untuk menggambar bounding box pada tekstur gambar & 3D
+    /// Warna UIKit untuk menggambar bounding box pada tekstur gambar
     var uiColor: UIColor {
         switch self {
         case .whitehead:
@@ -191,7 +231,7 @@ struct AcneDetection: Identifiable {
     }
 }
 
-/// Hasil scan dan analisis untuk 1 sisi wajah
+/// Hasil scan dan analisis untuk 1 area wajah
 struct FaceSideScanResult: Identifiable {
     let id = UUID()
     let side: FaceSide

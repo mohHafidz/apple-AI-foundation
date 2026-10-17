@@ -11,18 +11,19 @@ import SwiftUI
 import UIKit
 import Vision
 
-/// Manager kamera depan dengan 1 metode pengambilan gambar:
-/// Pengguna menahan (hold) 1 tombol sembari sistem mengecek apakah jarak wajah
+/// Manager kamera depan dengan 1 metode pengambilan gambar untuk 5 area wajah:
+/// (Pipi Kiri, Pipi Kanan, Dahi, Hidung, dan Mulut).
+/// Pengguna menahan (hold) 1 tombol sembari sistem mengecek apakah jarak fokus wajah
 /// tidak terlalu dekat dan tidak terlalu jauh (`FaceDistanceStatus`).
 @Observable
 final class FacePoseCameraManager: NSObject {
     let session = AVCaptureSession()
 
-    /// Sisi wajah yang sedang diminta untuk di-scan
-    var currentTargetSide: FaceSide = .front
-    /// Gambar yang sudah berhasil dijepret untuk tiap sisi wajah
+    /// Area wajah yang sedang diminta untuk di-scan (dimulai dari Pipi Kiri)
+    var currentTargetSide: FaceSide = .leftCheek
+    /// Gambar yang sudah berhasil dijepret untuk tiap area wajah
     var capturedImages: [FaceSide: UIImage] = [:]
-    /// Apakah seluruh 3 sisi wajah sudah selesai dijepret
+    /// Apakah seluruh 5 area wajah sudah selesai dijepret
     var isAllCaptured: Bool {
         FaceSide.allCases.allSatisfy { capturedImages[$0] != nil }
     }
@@ -55,9 +56,9 @@ final class FacePoseCameraManager: NSObject {
     nonisolated(unsafe) private var validHoldFrameCount: Int = 0
     private let requiredHoldFrames: Int = 12 // ~0.5 - 0.6 detik ditahan pada jarak ideal
 
-    // Batas rasio ukuran wajah terhadap frame (tidak terlalu jauh & tidak terlalu dekat)
-    private let minOptimalFaceDimension: CGFloat = 0.34
-    private let maxOptimalFaceDimension: CGFloat = 0.72
+    // Batas rasio ukuran untuk close-up 5 area wajah agar jerawat terlihat jelas
+    private let minOptimalFaceDimension: CGFloat = 0.36
+    private let maxOptimalFaceDimension: CGFloat = 0.88
 
     func checkPermissionAndStart() {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
@@ -73,7 +74,7 @@ final class FacePoseCameraManager: NSObject {
                     if granted {
                         self.configureAndStartSession()
                     } else {
-                        self.cameraErrorMessage = "Izin kamera ditolak. Aktifkan izin kamera di Pengaturan atau gunakan Mode Demo 3D."
+                        self.cameraErrorMessage = "Izin kamera ditolak. Aktifkan izin kamera di Pengaturan atau gunakan Mode Demo."
                     }
                 }
             }
@@ -222,7 +223,7 @@ final class FacePoseCameraManager: NSObject {
         }
     }
 
-    /// Simpan foto untuk satu sisi wajah dan otomatis pindah ke sisi berikutnya
+    /// Simpan foto untuk satu area wajah dan otomatis pindah ke area berikutnya
     func saveCapturedImage(_ image: UIImage, for side: FaceSide) {
         let feedback = UINotificationFeedbackGenerator()
         feedback.notificationOccurred(.success)
@@ -242,12 +243,12 @@ final class FacePoseCameraManager: NSObject {
         validHoldFrameCount = 0
         isCooldownActive = true
 
-        // Cari sisi berikutnya yang belum diambil
+        // Cari area berikutnya yang belum diambil
         if let nextSide = FaceSide.allCases.first(where: { capturedImages[$0] == nil }) {
             currentTargetSide = nextSide
         }
 
-        // Beri jeda singkat sebelum mengizinkan jepretan sisi berikutnya
+        // Beri jeda singkat sebelum mengizinkan jepretan area berikutnya
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(900))
             self.isCooldownActive = false
@@ -257,7 +258,7 @@ final class FacePoseCameraManager: NSObject {
     /// Reset seluruh hasil jepretan untuk mengulang dari awal
     func resetAllCaptures() {
         capturedImages.removeAll()
-        currentTargetSide = .front
+        currentTargetSide = .leftCheek
         holdProgress = 0.0
         validHoldFrameCount = 0
         isHoldingCaptureButton = false
@@ -299,7 +300,7 @@ extension FacePoseCameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
-        // Hitung ukuran relatif wajah terhadap layar untuk menentukan jarak
+        // Hitung ukuran relatif wajah terhadap layar untuk menentukan jarak close-up
         let bbox = face.boundingBox
         let dominantDimension = max(bbox.width, bbox.height)
 
