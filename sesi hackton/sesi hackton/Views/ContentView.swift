@@ -20,7 +20,7 @@ struct ContentView: View {
 
     // State untuk halaman Hasil Analisis
     @State private var showAnnotations: Bool = true
-    @State private var selectedSideFilter: FaceSide = .front
+    @State private var selectedSideFilter: FaceSide = .leftCheek
     @State private var showPhotoPreviewSheet: Bool = false
 
     var body: some View {
@@ -57,7 +57,7 @@ struct ContentView: View {
                                     .clipShape(.rect(cornerRadius: 16))
                                     .padding(.horizontal)
 
-                                Text("Sisi \(currentResult.side.rawValue) • \(currentResult.detections.count) objek terdeteksi")
+                                Text("Area \(currentResult.side.rawValue) • \(currentResult.detections.count) objek terdeteksi")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
@@ -83,7 +83,7 @@ struct ContentView: View {
     private var navigationTitleText: String {
         switch stage {
         case .scanning:
-            return "Pemindaian Wajah"
+            return "Scan 5 Area Wajah"
         case .analyzing:
             return "Menganalisis..."
         case .results:
@@ -149,21 +149,42 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - 1. Layar Scan 3 Sisi Wajah (1 Metode: Hold Button + Cek Jarak Ideal)
+    // MARK: - 1. Layar Scan 5 Area Wajah (Pipi Kiri, Pipi Kanan, Dahi, Hidung, Mulut)
 
     private var scannerScreen: some View {
         VStack(spacing: 0) {
-            // Segmented Picker standar HIG untuk berpindah/melihat sisi wajah
-            Picker("Sisi Wajah", selection: $cameraManager.currentTargetSide) {
-                ForEach(FaceSide.allCases) { side in
-                    let done = cameraManager.capturedImages[side] != nil
-                    Text(done ? "✓ \(side.rawValue)" : side.rawValue)
-                        .tag(side)
+            // Pilihan 5 Area Wajah (Scrollable Horizontal Pills agar rapi & tidak terpotong)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(FaceSide.allCases) { side in
+                        let isSelected = cameraManager.currentTargetSide == side
+                        let isDone = cameraManager.capturedImages[side] != nil
+
+                        Button {
+                            cameraManager.currentTargetSide = side
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: isDone ? "checkmark.circle.fill" : side.systemIcon)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(isDone ? .green : (isSelected ? .white : .secondary))
+
+                                Text(side.shortTabTitle)
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground))
+                            )
+                            .foregroundStyle(isSelected ? .white : .primary)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
 
             // Viewfinder Kamera
             ZStack {
@@ -186,7 +207,7 @@ struct ContentView: View {
                     }
                 }
 
-                // Panduan Jarak Wajah & Banner Instruksi dengan Liquid Glass
+                // Panduan Guideline 5 Area Wajah (Pipi Kiri, Pipi Kanan, Dahi, Hidung, Mulut)
                 faceDistanceOverlay
 
                 // Efek Flash saat memotret
@@ -199,14 +220,14 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 16)
 
-            // Kontrol Bawah: Status 3 Sisi + 1 Tombol Hold (Tahan untuk Memotret)
-            VStack(spacing: 14) {
+            // Kontrol Bawah: Status 5 Area + 1 Tombol Hold (Tahan untuk Memotret)
+            VStack(spacing: 12) {
                 capturedSidesStatusRow
 
                 holdToCaptureControl
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .onAppear {
@@ -219,7 +240,7 @@ struct ContentView: View {
 
     private var faceDistanceOverlay: some View {
         VStack {
-            // Pill Instruksi Sisi Wajah di atas kamera dengan Liquid Glass
+            // Pill Instruksi Area Fokus Wajah di atas kamera dengan Liquid Glass
             HStack(spacing: 10) {
                 Image(systemName: cameraManager.currentTargetSide.systemIcon)
                     .font(.headline)
@@ -241,59 +262,49 @@ struct ContentView: View {
 
             Spacer()
 
-            // Bingkai Elips Panduan Jarak Wajah + Ring Progress saat Tombol Ditahan
+            // Guideline Visual Khusus untuk 5 Area: Pipi Kiri, Pipi Kanan, Dahi, Hidung, Mulut
             if cameraManager.isCameraAuthorized {
-                ZStack {
-                    Ellipse()
-                        .stroke(
-                            cameraManager.distanceStatus.tintColor,
-                            style: StrokeStyle(
-                                lineWidth: cameraManager.distanceStatus == .optimal ? 4 : 3,
-                                dash: cameraManager.distanceStatus == .optimal ? [] : [10, 8]
-                            )
-                        )
-                        .frame(width: 220, height: 286)
-                        .animation(.easeInOut(duration: 0.2), value: cameraManager.distanceStatus)
-
-                    if cameraManager.holdProgress > 0 {
-                        Ellipse()
-                            .trim(from: 0, to: cameraManager.holdProgress)
-                            .stroke(
-                                Color.green,
-                                style: StrokeStyle(lineWidth: 6, lineCap: .round)
-                            )
-                            .frame(width: 230, height: 296)
-                            .rotationEffect(.degrees(-90))
-                            .animation(.linear(duration: 0.1), value: cameraManager.holdProgress)
-                    }
-                }
+                FacialZoneGuidelineOverlay(
+                    targetZone: cameraManager.currentTargetSide,
+                    distanceStatus: cameraManager.distanceStatus,
+                    holdProgress: cameraManager.holdProgress
+                )
             }
 
             Spacer()
 
             // Indikator Jarak Wajah Real-time (Terlalu Dekat / Terlalu Jauh / Jarak Ideal)
             if cameraManager.isCameraAuthorized {
-                HStack(spacing: 8) {
-                    Image(systemName: cameraManager.distanceStatus.systemIcon)
-                        .foregroundStyle(cameraManager.distanceStatus.tintColor)
-                        .font(.subheadline.weight(.semibold))
+                VStack(spacing: 6) {
+                    Text(cameraManager.currentTargetSide.guidelineHint)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.black.opacity(0.45), in: .capsule)
 
-                    if cameraManager.isHoldingCaptureButton {
-                        if cameraManager.distanceStatus == .optimal {
-                            Text("Menahan... \(Int(cameraManager.holdProgress * 100))% (Jarak Ideal)")
-                                .font(.caption.weight(.semibold))
+                    HStack(spacing: 8) {
+                        Image(systemName: cameraManager.distanceStatus.systemIcon)
+                            .foregroundStyle(cameraManager.distanceStatus.tintColor)
+                            .font(.subheadline.weight(.semibold))
+
+                        if cameraManager.isHoldingCaptureButton {
+                            if cameraManager.distanceStatus == .optimal {
+                                Text("Menahan... \(Int(cameraManager.holdProgress * 100))% (Jarak Ideal)")
+                                    .font(.caption.weight(.semibold))
+                            } else {
+                                Text(cameraManager.distanceStatus.title)
+                                    .font(.caption.weight(.semibold))
+                            }
                         } else {
                             Text(cameraManager.distanceStatus.title)
-                                .font(.caption.weight(.semibold))
+                                .font(.caption.weight(.medium))
                         }
-                    } else {
-                        Text(cameraManager.distanceStatus.title)
-                            .font(.caption.weight(.medium))
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .glassEffect(.regular, in: .capsule)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .glassEffect(.regular, in: .capsule)
                 .padding(.bottom, 14)
             }
         }
@@ -303,6 +314,8 @@ struct ContentView: View {
     private var holdToCaptureControl: some View {
         let isOptimal = cameraManager.distanceStatus == .optimal
         let isHolding = cameraManager.isHoldingCaptureButton
+        let capturedCount = cameraManager.capturedImages.count
+        let totalCount = FaceSide.allCases.count
 
         return VStack(spacing: 6) {
             ZStack {
@@ -312,7 +325,7 @@ struct ContentView: View {
                         isOptimal ? Color.green.opacity(0.45) : Color.primary.opacity(0.25),
                         lineWidth: 4
                     )
-                    .frame(width: 78, height: 78)
+                    .frame(width: 76, height: 76)
 
                 if cameraManager.holdProgress > 0 {
                     Circle()
@@ -321,14 +334,14 @@ struct ContentView: View {
                             Color.green,
                             style: StrokeStyle(lineWidth: 5, lineCap: .round)
                         )
-                        .frame(width: 78, height: 78)
+                        .frame(width: 76, height: 76)
                         .rotationEffect(.degrees(-90))
                 }
 
                 // Lingkaran dalam yang mengecil sedikit saat ditekan & ditahan
                 Circle()
                     .fill(isOptimal ? Color.green : Color.primary)
-                    .frame(width: 62, height: 62)
+                    .frame(width: 60, height: 60)
                     .scaleEffect(isHolding ? 0.86 : 1.0)
                     .animation(.spring(duration: 0.2), value: isHolding)
 
@@ -346,13 +359,13 @@ struct ContentView: View {
                         cameraManager.setHoldingCaptureButton(false)
                     }
             )
-            .accessibilityLabel("Tahan tombol untuk memotret sisi \(cameraManager.currentTargetSide.rawValue)")
-            .accessibilityHint("Pastikan jarak wajah ideal, tidak terlalu dekat dan tidak terlalu jauh")
+            .accessibilityLabel("Tahan tombol untuk memotret area \(cameraManager.currentTargetSide.rawValue)")
+            .accessibilityHint("Pastikan area kulit berada di dalam guideline dan jarak ideal")
 
             Text(
                 isHolding
-                ? (isOptimal ? "Tahan sebentar..." : "Sesuaikan jarak wajah sambil menahan")
-                : "Tahan tombol untuk memotret \(cameraManager.currentTargetSide.rawValue)"
+                ? (isOptimal ? "Tahan sebentar..." : "Sesuaikan jarak area wajah sambil menahan")
+                : "Tahan untuk potret \(cameraManager.currentTargetSide.rawValue) (\(capturedCount)/\(totalCount) selesai)"
             )
             .font(.caption.weight(.medium))
             .foregroundStyle(isHolding && !isOptimal ? .orange : .secondary)
@@ -360,51 +373,53 @@ struct ContentView: View {
     }
 
     private var capturedSidesStatusRow: some View {
-        HStack(spacing: 10) {
-            ForEach(FaceSide.allCases) { side in
-                let capturedImg = cameraManager.capturedImages[side]
-                let isSelected = cameraManager.currentTargetSide == side
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(FaceSide.allCases) { side in
+                    let capturedImg = cameraManager.capturedImages[side]
+                    let isSelected = cameraManager.currentTargetSide == side
 
-                Button {
-                    cameraManager.currentTargetSide = side
-                } label: {
-                    HStack(spacing: 8) {
-                        if let capturedImg {
-                            Image(uiImage: capturedImg)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 32, height: 32)
-                                .clipShape(.rect(cornerRadius: 6))
-                        } else {
-                            Image(systemName: side.systemIcon)
-                                .font(.caption)
-                                .foregroundStyle(isSelected ? .primary : .secondary)
-                                .frame(width: 32, height: 32)
-                                .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 6))
-                        }
+                    Button {
+                        cameraManager.currentTargetSide = side
+                    } label: {
+                        HStack(spacing: 6) {
+                            if let capturedImg {
+                                Image(uiImage: capturedImg)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 28, height: 28)
+                                    .clipShape(.rect(cornerRadius: 6))
+                            } else {
+                                Image(systemName: side.systemIcon)
+                                    .font(.caption2)
+                                    .foregroundStyle(isSelected ? .primary : .secondary)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 6))
+                            }
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(side.rawValue)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text(capturedImg != nil ? "Tersimpan" : "Belum")
-                                .font(.caption2)
-                                .foregroundStyle(capturedImg != nil ? .green : .secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(side.shortTabTitle)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(capturedImg != nil ? "Tersimpan" : "Belum")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(capturedImg != nil ? .green : .secondary)
+                            }
                         }
-                        Spacer(minLength: 0)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                                )
+                        )
                     }
-                    .padding(6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
-                            )
-                    )
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -416,9 +431,9 @@ struct ContentView: View {
             ProgressView()
                 .controlSize(.large)
                 .padding(.bottom, 8)
-            Text("Menganalisis 3 Sisi Wajah")
+            Text("Menganalisis 5 Area Wajah")
         } description: {
-            Text("Model best_yolo_acne sedang mengidentifikasi objek jerawat dan memilih persentase keyakinan tertinggi.")
+            Text("Model best_yolo_acne sedang mengidentifikasi objek jerawat pada Pipi Kiri, Pipi Kanan, Dahi, Hidung, dan Mulut.")
         }
         .background(Color(uiColor: .systemGroupedBackground))
     }
@@ -427,18 +442,34 @@ struct ContentView: View {
 
     private var resultsScreen: some View {
         List {
-            // Section 1: Pilih Sisi Wajah & Foto Hasil Bounding Box
+            // Section 1: Pilih Area Wajah & Foto Hasil Bounding Box
             if let currentResult = scanResults.first(where: { $0.side == selectedSideFilter }) ?? scanResults.first {
                 Section {
                     VStack(spacing: 12) {
-                        Picker("Pilih Sisi Wajah", selection: $selectedSideFilter) {
-                            ForEach(FaceSide.allCases) { side in
-                                let count = scanResults.first(where: { $0.side == side })?.detections.count ?? 0
-                                Text("\(side.rawValue) (\(count))")
-                                    .tag(side)
+                        // Filter 5 Area Wajah
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(FaceSide.allCases) { side in
+                                    let count = scanResults.first(where: { $0.side == side })?.detections.count ?? 0
+                                    let isSelected = selectedSideFilter == side
+
+                                    Button {
+                                        selectedSideFilter = side
+                                    } label: {
+                                        Text("\(side.shortTabTitle) (\(count))")
+                                            .font(.caption.weight(.semibold))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 7)
+                                            .background(
+                                                Capsule()
+                                                    .fill(isSelected ? Color.accentColor : Color(uiColor: .tertiarySystemFill))
+                                            )
+                                            .foregroundStyle(isSelected ? .white : .primary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
                         }
-                        .pickerStyle(.segmented)
 
                         Image(uiImage: showAnnotations ? currentResult.annotatedImage : currentResult.originalImage)
                             .resizable()
@@ -450,19 +481,19 @@ struct ContentView: View {
                         Button {
                             showPhotoPreviewSheet = true
                         } label: {
-                            Label("Perbesar Foto Sisi \(currentResult.side.rawValue)", systemImage: "arrow.up.left.and.arrow.down.right")
+                            Label("Perbesar Foto Area \(currentResult.side.rawValue)", systemImage: "arrow.up.left.and.arrow.down.right")
                                 .font(.footnote.weight(.medium))
                         }
                     }
                     .padding(.vertical, 4)
                 } header: {
-                    Text("Hasil Foto & Bounding Box")
+                    Text("Hasil Foto & Bounding Box (5 Area)")
                 }
 
                 // Section 2: Daftar Objek & Kemungkinan (Persis seperti Gambar Referensi + HIG Inset Card)
                 Section {
                     if currentResult.detections.isEmpty {
-                        Label("Tidak ditemukan jerawat pada sisi \(currentResult.side.rawValue).", systemImage: "checkmark.circle.fill")
+                        Label("Tidak ditemukan jerawat pada area \(currentResult.side.rawValue).", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     } else {
                         ForEach(Array(currentResult.detections.enumerated()), id: \.element.id) { index, detection in
@@ -575,7 +606,7 @@ struct ContentView: View {
             let results = await AcneAnalyzerService.shared.analyzeAllSides(capturedImages: imagesToAnalyze)
             await MainActor.run {
                 self.scanResults = results
-                self.selectedSideFilter = results.first?.side ?? .front
+                self.selectedSideFilter = results.first?.side ?? .leftCheek
                 self.stage = .results
             }
         }
@@ -585,8 +616,265 @@ struct ContentView: View {
         cameraManager.stopSession()
         let demoResults = DemoSampleGenerator.makeDemoScanResults()
         self.scanResults = demoResults
-        self.selectedSideFilter = .front
+        self.selectedSideFilter = .leftCheek
         self.stage = .results
+    }
+}
+
+// MARK: - Komponen Guideline Visual 5 Area Kulit (Pipi Kiri, Pipi Kanan, Dahi, Hidung, Mulut)
+
+struct FacialZoneGuidelineOverlay: View {
+    let targetZone: FaceSide
+    let distanceStatus: FaceDistanceStatus
+    let holdProgress: Double
+
+    var body: some View {
+        ZStack {
+            switch targetZone {
+            case .leftCheek:
+                cheekFocusGuideline(isRightCheek: false)
+            case .rightCheek:
+                cheekFocusGuideline(isRightCheek: true)
+            case .forehead:
+                foreheadGuideline
+            case .nose:
+                noseGuideline
+            case .mouth:
+                mouthGuideline
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: targetZone)
+        .animation(.easeInOut(duration: 0.2), value: distanceStatus)
+    }
+
+    /// 1 & 2. Guideline untuk Close-Up Pipi Kiri / Pipi Kanan
+    private func cheekFocusGuideline(isRightCheek: Bool) -> some View {
+        let boxWidth: CGFloat = 236
+        let boxHeight: CGFloat = 266
+
+        return ZStack {
+            // Patokan anatomi (mata, hidung, rahang)
+            VStack(alignment: isRightCheek ? .leading : .trailing, spacing: 18) {
+                HStack(spacing: 5) {
+                    Image(systemName: "eye")
+                        .font(.caption2)
+                    Text("Batas Bawah Mata")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.white.opacity(0.7))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.black.opacity(0.35), in: .capsule)
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    if !isRightCheek {
+                        Text("Sisi Hidung")
+                            .font(.caption2)
+                    }
+                    Image(systemName: isRightCheek ? "chevron.compact.left" : "chevron.compact.right")
+                        .font(.title3.weight(.bold))
+                    if isRightCheek {
+                        Text("Sisi Hidung")
+                            .font(.caption2)
+                    }
+                }
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.black.opacity(0.35), in: .capsule)
+
+                Spacer()
+
+                Text("Garis Rahang / Pipi Bawah")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.35), in: .capsule)
+            }
+            .frame(width: boxWidth + 10, height: boxHeight + 10)
+
+            zoneFrameBox(
+                title: isRightCheek ? "AREA PIPI KANAN" : "AREA PIPI KIRI",
+                width: boxWidth,
+                height: boxHeight,
+                cornerRadius: 44
+            )
+        }
+    }
+
+    /// 3. Guideline untuk Area Dahi (Forehead)
+    private var foreheadGuideline: some View {
+        let boxWidth: CGFloat = 272
+        let boxHeight: CGFloat = 176
+
+        return ZStack {
+            zoneFrameBox(
+                title: "AREA DAHI (FOREHEAD)",
+                width: boxWidth,
+                height: boxHeight,
+                cornerRadius: 36
+            )
+
+            // Patokan garis alis di bagian bawah bingkai dahi
+            VStack {
+                Spacer()
+                HStack(spacing: 36) {
+                    Capsule()
+                        .stroke(.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                        .frame(width: 76, height: 18)
+                        .overlay(
+                            Text("Alis Kiri")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.75))
+                        )
+
+                    Capsule()
+                        .stroke(.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                        .frame(width: 76, height: 18)
+                        .overlay(
+                            Text("Alis Kanan")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.75))
+                        )
+                }
+                .offset(y: 28)
+            }
+            .frame(width: boxWidth, height: boxHeight)
+        }
+    }
+
+    /// 4. Guideline untuk Area Hidung (Nose & Pori-pori Tengah)
+    private var noseGuideline: some View {
+        let boxWidth: CGFloat = 190
+        let boxHeight: CGFloat = 236
+
+        return ZStack {
+            zoneFrameBox(
+                title: "AREA HIDUNG",
+                width: boxWidth,
+                height: boxHeight,
+                cornerRadius: 40
+            )
+
+            // Siluet garis batang & cuping hidung di tengah
+            VStack(spacing: 8) {
+                Text("Pangkal Hidung")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.top, 24)
+
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(.white.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .frame(width: 68, height: 110)
+
+                Text("Cuping Hidung & Pori")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.bottom, 16)
+            }
+            .frame(width: boxWidth, height: boxHeight)
+        }
+    }
+
+    /// 5. Guideline untuk Area Mulut & Dagu (Perioral / Chin)
+    private var mouthGuideline: some View {
+        let boxWidth: CGFloat = 256
+        let boxHeight: CGFloat = 200
+
+        return ZStack {
+            zoneFrameBox(
+                title: "AREA MULUT & DAGU",
+                width: boxWidth,
+                height: boxHeight,
+                cornerRadius: 38
+            )
+
+            // Patokan siluet bibir di tengah agar area kulit sekitar mulut & dagu masuk ke bingkai
+            VStack(spacing: 10) {
+                Text("Bawah Hidung / Atas Bibir")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.top, 22)
+
+                Capsule()
+                    .stroke(.white.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .frame(width: 116, height: 38)
+                    .overlay(
+                        Text("Posisi Bibir")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.75))
+                    )
+
+                Text("Area Dagu & Sudut Mulut")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.bottom, 14)
+            }
+            .frame(width: boxWidth, height: boxHeight)
+        }
+    }
+
+    /// Komponen reusable untuk menggambar kotak fokus, crosshair, badge judul, dan progress tahan tombol
+    private func zoneFrameBox(
+        title: String,
+        width: CGFloat,
+        height: CGFloat,
+        cornerRadius: CGFloat
+    ) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(distanceStatus.tintColor.opacity(0.06))
+                .frame(width: width, height: height)
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(
+                    distanceStatus.tintColor,
+                    style: StrokeStyle(
+                        lineWidth: distanceStatus == .optimal ? 4 : 3,
+                        dash: distanceStatus == .optimal ? [] : [12, 8]
+                    )
+                )
+                .frame(width: width, height: height)
+
+            // Crosshair grid halus di dalam kotak fokus
+            Path { path in
+                path.move(to: CGPoint(x: 24, y: height / 2))
+                path.addLine(to: CGPoint(x: width - 24, y: height / 2))
+                path.move(to: CGPoint(x: width / 2, y: 24))
+                path.addLine(to: CGPoint(x: width / 2, y: height - 24))
+            }
+            .stroke(.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+            .frame(width: width, height: height)
+
+            // Badge nama area di bagian atas bingkai
+            VStack {
+                Text(title)
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.8)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(distanceStatus.tintColor.opacity(0.88), in: .capsule)
+                    .offset(y: -14)
+                Spacer()
+            }
+            .frame(width: width, height: height)
+
+            // Progress ring saat tombol potret sedang ditahan (hold)
+            if holdProgress > 0 {
+                RoundedRectangle(cornerRadius: cornerRadius + 4, style: .continuous)
+                    .trim(from: 0, to: holdProgress)
+                    .stroke(
+                        Color.green,
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                    )
+                    .frame(width: width + 12, height: height + 12)
+                    .rotationEffect(.degrees(-90))
+            }
+        }
     }
 }
 

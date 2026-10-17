@@ -7,8 +7,8 @@
 
 import UIKit
 
-/// Generator data simulasi 3 sisi wajah apabila pengguna menguji di Simulator tanpa kamera fisik,
-/// atau ingin langsung mencoba hasil deteksi & tampilan Model Kepala 3D.
+/// Generator data simulasi 5 area wajah (Pipi Kiri, Pipi Kanan, Dahi, Hidung, dan Mulut)
+/// apabila pengguna menguji di Simulator tanpa kamera fisik.
 enum DemoSampleGenerator {
     static func makeDemoScanResults() -> [FaceSideScanResult] {
         FaceSide.allCases.map { side in
@@ -26,61 +26,7 @@ enum DemoSampleGenerator {
 
     private static func makeSampleDetections(for side: FaceSide) -> [AcneDetection] {
         switch side {
-        case .front:
-            return [
-                AcneDetection(
-                    topType: .whitehead,
-                    topConfidence: 0.91,
-                    allCandidates: [
-                        AcneClassCandidate(label: "whitehead", confidence: 0.91),
-                        AcneClassCandidate(label: "pustule", confidence: 0.08),
-                        AcneClassCandidate(label: "papule", confidence: 0.01)
-                    ],
-                    normalizedRect: CGRect(x: 0.42, y: 0.24, width: 0.14, height: 0.10)
-                ),
-                AcneDetection(
-                    topType: .pustule,
-                    topConfidence: 0.84,
-                    allCandidates: [
-                        AcneClassCandidate(label: "pustule", confidence: 0.84),
-                        AcneClassCandidate(label: "papule", confidence: 0.12),
-                        AcneClassCandidate(label: "whitehead", confidence: 0.04)
-                    ],
-                    normalizedRect: CGRect(x: 0.28, y: 0.52, width: 0.13, height: 0.10)
-                ),
-                AcneDetection(
-                    topType: .blackhead,
-                    topConfidence: 0.78,
-                    allCandidates: [
-                        AcneClassCandidate(label: "blackhead", confidence: 0.78),
-                        AcneClassCandidate(label: "whitehead", confidence: 0.19)
-                    ],
-                    normalizedRect: CGRect(x: 0.45, y: 0.46, width: 0.11, height: 0.09)
-                )
-            ]
-        case .right:
-            return [
-                AcneDetection(
-                    topType: .papule,
-                    topConfidence: 0.89,
-                    allCandidates: [
-                        AcneClassCandidate(label: "papule", confidence: 0.89),
-                        AcneClassCandidate(label: "pustule", confidence: 0.09),
-                        AcneClassCandidate(label: "nodule", confidence: 0.02)
-                    ],
-                    normalizedRect: CGRect(x: 0.35, y: 0.48, width: 0.16, height: 0.12)
-                ),
-                AcneDetection(
-                    topType: .whitehead,
-                    topConfidence: 0.93,
-                    allCandidates: [
-                        AcneClassCandidate(label: "whitehead", confidence: 0.93),
-                        AcneClassCandidate(label: "pustule", confidence: 0.06)
-                    ],
-                    normalizedRect: CGRect(x: 0.52, y: 0.60, width: 0.14, height: 0.10)
-                )
-            ]
-        case .left:
+        case .leftCheek:
             return [
                 AcneDetection(
                     topType: .nodule,
@@ -102,6 +48,84 @@ enum DemoSampleGenerator {
                     normalizedRect: CGRect(x: 0.30, y: 0.36, width: 0.13, height: 0.10)
                 )
             ]
+        case .rightCheek:
+            return [
+                AcneDetection(
+                    topType: .papule,
+                    topConfidence: 0.89,
+                    allCandidates: [
+                        AcneClassCandidate(label: "papule", confidence: 0.89),
+                        AcneClassCandidate(label: "pustule", confidence: 0.09),
+                        AcneClassCandidate(label: "nodule", confidence: 0.02)
+                    ],
+                    normalizedRect: CGRect(x: 0.35, y: 0.48, width: 0.16, height: 0.12)
+                ),
+                AcneDetection(
+                    topType: .whitehead,
+                    topConfidence: 0.93,
+                    allCandidates: [
+                        AcneClassCandidate(label: "whitehead", confidence: 0.93),
+                        AcneClassCandidate(label: "pustule", confidence: 0.06)
+                    ],
+                    normalizedRect: CGRect(x: 0.52, y: 0.60, width: 0.14, height: 0.10)
+                )
+            ]
+        case .forehead:
+            return [
+                AcneDetection(
+                    topType: .whitehead,
+                    topConfidence: 0.91,
+                    allCandidates: [
+                        AcneClassCandidate(label: "whitehead", confidence: 0.91),
+                        AcneClassCandidate(label: "pustule", confidence: 0.08),
+                        AcneClassCandidate(label: "papule", confidence: 0.01)
+                    ],
+                    normalizedRect: CGRect(x: 0.42, y: 0.30, width: 0.14, height: 0.10)
+                ),
+                AcneDetection(
+                    topType: .papule,
+                    topConfidence: 0.82,
+                    allCandidates: [
+                        AcneClassCandidate(label: "papule", confidence: 0.82),
+                        AcneClassCandidate(label: "whitehead", confidence: 0.14)
+                    ],
+                    normalizedRect: CGRect(x: 0.28, y: 0.44, width: 0.13, height: 0.10)
+                )
+            ]
+        case .nose:
+            return [
+                AcneDetection(
+                    topType: .blackhead,
+                    topConfidence: 0.92,
+                    allCandidates: [
+                        AcneClassCandidate(label: "blackhead", confidence: 0.92),
+                        AcneClassCandidate(label: "whitehead", confidence: 0.07)
+                    ],
+                    normalizedRect: CGRect(x: 0.44, y: 0.48, width: 0.12, height: 0.10)
+                ),
+                AcneDetection(
+                    topType: .blackhead,
+                    topConfidence: 0.81,
+                    allCandidates: [
+                        AcneClassCandidate(label: "blackhead", confidence: 0.81),
+                        AcneClassCandidate(label: "whitehead", confidence: 0.16)
+                    ],
+                    normalizedRect: CGRect(x: 0.36, y: 0.56, width: 0.11, height: 0.09)
+                )
+            ]
+        case .mouth:
+            return [
+                AcneDetection(
+                    topType: .pustule,
+                    topConfidence: 0.87,
+                    allCandidates: [
+                        AcneClassCandidate(label: "pustule", confidence: 0.87),
+                        AcneClassCandidate(label: "papule", confidence: 0.10),
+                        AcneClassCandidate(label: "whitehead", confidence: 0.03)
+                    ],
+                    normalizedRect: CGRect(x: 0.40, y: 0.62, width: 0.15, height: 0.11)
+                )
+            ]
         }
     }
 
@@ -115,8 +139,8 @@ enum DemoSampleGenerator {
             UIColor(red: 0.12, green: 0.13, blue: 0.18, alpha: 1.0).setFill()
             cg.fill(CGRect(origin: .zero, size: size))
 
-            // Siluet oval kulit wajah
-            let faceRect = CGRect(x: 110, y: 110, width: 500, height: 680)
+            // Siluet oval kulit wajah close-up
+            let faceRect = CGRect(x: 80, y: 90, width: 560, height: 730)
             let facePath = UIBezierPath(ovalIn: faceRect)
             UIColor(red: 0.93, green: 0.78, blue: 0.68, alpha: 1.0).setFill()
             facePath.fill()
@@ -126,43 +150,56 @@ enum DemoSampleGenerator {
             facePath.lineWidth = 14
             facePath.stroke()
 
-            // Elemen wajah sederhana (mata, alis, hidung, bibir) sesuai arah
+            // Elemen wajah sederhana sesuai fokus area
             let offsetX: CGFloat
+            let offsetY: CGFloat
             switch side {
-            case .front: offsetX = 0
-            case .right: offsetX = 75
-            case .left: offsetX = -75
+            case .leftCheek:
+                offsetX = -95
+                offsetY = 0
+            case .rightCheek:
+                offsetX = 95
+                offsetY = 0
+            case .forehead:
+                offsetX = 0
+                offsetY = 110
+            case .nose:
+                offsetX = 0
+                offsetY = 0
+            case .mouth:
+                offsetX = 0
+                offsetY = -95
             }
 
             UIColor(red: 0.25, green: 0.18, blue: 0.15, alpha: 0.75).setFill()
-            let leftEye = UIBezierPath(ovalIn: CGRect(x: 240 + offsetX, y: 360, width: 65, height: 28))
-            let rightEye = UIBezierPath(ovalIn: CGRect(x: 415 + offsetX, y: 360, width: 65, height: 28))
+            let leftEye = UIBezierPath(ovalIn: CGRect(x: 240 + offsetX, y: 360 + offsetY, width: 65, height: 28))
+            let rightEye = UIBezierPath(ovalIn: CGRect(x: 415 + offsetX, y: 360 + offsetY, width: 65, height: 28))
             leftEye.fill()
             rightEye.fill()
 
             // Hidung
-            let nosePath = UIBezierPath(roundedRect: CGRect(x: 342 + offsetX, y: 400, width: 36, height: 110), cornerRadius: 18)
+            let nosePath = UIBezierPath(roundedRect: CGRect(x: 342 + offsetX, y: 400 + offsetY, width: 36, height: 110), cornerRadius: 18)
             UIColor(red: 0.85, green: 0.67, blue: 0.57, alpha: 0.85).setFill()
             nosePath.fill()
 
             // Bibir
-            let mouthPath = UIBezierPath(roundedRect: CGRect(x: 295 + offsetX, y: 565, width: 130, height: 34), cornerRadius: 17)
+            let mouthPath = UIBezierPath(roundedRect: CGRect(x: 295 + offsetX, y: 565 + offsetY, width: 130, height: 34), cornerRadius: 17)
             UIColor(red: 0.82, green: 0.45, blue: 0.48, alpha: 0.85).setFill()
             mouthPath.fill()
 
             // Titik kemerahan simulasi jerawat di kulit
             let spots: [(CGRect, UIColor)] = [
-                (CGRect(x: 335, y: 245, width: 28, height: 28), UIColor(red: 0.95, green: 0.88, blue: 0.85, alpha: 0.9)),
-                (CGRect(x: 235, y: 500, width: 32, height: 32), UIColor(red: 0.92, green: 0.35, blue: 0.38, alpha: 0.85)),
-                (CGRect(x: 420, y: 485, width: 34, height: 34), UIColor(red: 0.88, green: 0.30, blue: 0.35, alpha: 0.85))
+                (CGRect(x: 335, y: 275, width: 28, height: 28), UIColor(red: 0.95, green: 0.88, blue: 0.85, alpha: 0.9)),
+                (CGRect(x: 255, y: 495, width: 32, height: 32), UIColor(red: 0.92, green: 0.35, blue: 0.38, alpha: 0.85)),
+                (CGRect(x: 410, y: 485, width: 34, height: 34), UIColor(red: 0.88, green: 0.30, blue: 0.35, alpha: 0.85))
             ]
             for (spotRect, spotColor) in spots {
                 spotColor.setFill()
                 UIBezierPath(ovalIn: spotRect).fill()
             }
 
-            // Label watermark sisi wajah
-            let title = "SISI: \(side.rawValue.uppercased())"
+            // Label watermark area wajah
+            let title = "AREA: \(side.rawValue.uppercased())"
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: 28, weight: .bold),
                 .foregroundColor: UIColor.white.withAlphaComponent(0.75)
