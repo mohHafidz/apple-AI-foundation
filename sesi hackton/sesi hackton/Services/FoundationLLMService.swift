@@ -74,7 +74,7 @@ final class FoundationLLMService: ObservableObject {
                     )
 
                     self.statusLog =
-                        "Berhasil di-generate oleh Apple On-Device Foundation Model (M5 NPU)."
+                        "Berhasil di-generate oleh Apple On-Device Foundation Model."
                     self.isGenerating = false
                     return
                 } catch {
