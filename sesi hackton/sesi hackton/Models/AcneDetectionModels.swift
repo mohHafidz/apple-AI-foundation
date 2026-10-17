@@ -163,6 +163,24 @@ enum AcneType: String, CaseIterable, Identifiable {
     }
 }
 
+enum ExposureStatus: Equatable {
+    case normal, bright, overexposed
+
+    static func classify(mean: Double, clippedFraction: Double) -> ExposureStatus {
+        if clippedFraction > LightingConfig.maxClippedFraction { return .overexposed }
+        if mean > LightingConfig.brightThreshold { return .bright }
+        return .normal
+    }
+
+    func warning(for side: FaceSide) -> String? {
+        switch self {
+        case .normal: return nil
+        case .bright: return "Foto sisi \(side.rawValue) agak terang, sudah disesuaikan otomatis."
+        case .overexposed: return "Foto sisi \(side.rawValue) terlalu terang (silau/kena flash). Hindari cahaya langsung ke wajah lalu foto ulang."
+        }
+    }
+}
+
 /// Kandidat klasifikasi untuk 1 objek jerawat (seperti pada gambar: whitehead 91%, pustule 8%)
 struct AcneClassCandidate: Identifiable, Hashable {
     let id = UUID()
@@ -198,4 +216,5 @@ struct FaceSideScanResult: Identifiable {
     let originalImage: UIImage
     let annotatedImage: UIImage
     let detections: [AcneDetection]
+    let exposureStatus: ExposureStatus
 }

@@ -19,7 +19,8 @@ enum DemoSampleGenerator {
                 side: side,
                 originalImage: baseImage,
                 annotatedImage: annotated,
-                detections: sampleDetections
+                detections: sampleDetections,
+                exposureStatus: .normal
             )
         }
     }

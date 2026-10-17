@@ -39,9 +39,10 @@ final class FoundationLLMService: ObservableObject {
         let userPrompt = """
             Kamera mendeteksi kondisi kulit wajah pengguna sebagai berikut: \(summaryInput).
             Buatkan:
-            1. Penjelasan lengkap pola hidup (Markdown).
-            2. Rangkuman santai 2-3 kalimat untuk dibacakan oleh suara TTS karena pengguna malas membaca teks panjang.
-            3. Jadwal harian konkret dari pagi hingga malam (makan sayur apa, buah apa, protein apa, dan olahraga apa) untuk dimasukkan ke Apple Calendar besok.
+            1. Penjelasan jenis-jenis acnenya bahasa indonesianya (kondisi jika terdapat acne yang ditemukan) 
+            2. Penjelasan lengkap pola hidup (Markdown).
+            3. Rangkuman santai 2-3 kalimat untuk dibacakan oleh suara TTS karena pengguna malas membaca teks panjang.
+            4. Jadwal harian konkret dari pagi hingga malam (makan sayur apa, buah apa, protein apa, dan olahraga apa) untuk dimasukkan ke Apple Calendar besok.
             """
 
         #if canImport(FoundationModels)
