@@ -460,7 +460,7 @@ struct ContentView: View {
             VStack(spacing: 6) {
                 Text("Menganalisis Wajah & Menyusun Rencana AI...")
                     .font(.headline)
-                Text("Model CoreML sedang menghitung deteksi jerawat, lalu Foundation AI merancang panduan nutrisi, suara, dan jadwal kalender.")
+                Text("AcneCareAI sedang berkerja untuk memberikan saran spesial untuk kamu")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
