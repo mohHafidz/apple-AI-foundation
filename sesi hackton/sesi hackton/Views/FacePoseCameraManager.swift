@@ -12,7 +12,7 @@ import SwiftUI
 import UIKit
 import Vision
 
-/// Manager kamera depan dengan 1 metode pengambilan gambar:
+/// Manager kamera (depan / belakang) dengan 1 metode pengambilan gambar:
 /// Pengguna menahan (hold) 1 tombol sembari sistem mengecek apakah jarak wajah
 /// tidak terlalu dekat dan tidak terlalu jauh (`FaceDistanceStatus`).
 @Observable
@@ -32,6 +32,12 @@ final class FacePoseCameraManager: NSObject {
     var isCameraAuthorized: Bool = false
     var isSessionRunning: Bool = false
     var cameraErrorMessage: String?
+    /// Mencegah konfigurasi session berjalan dobel sebelum `isSessionRunning` ter-update
+    @ObservationIgnored private var isStartingSession: Bool = false
+    /// Kamera yang sedang dipakai (depan / belakang)
+    var cameraPosition: AVCaptureDevice.Position = .front
+    /// Apakah sedang proses ganti kamera (untuk menonaktifkan tombol sementara)
+    var isSwitchingCamera: Bool = false
 
     /// Apakah efek video bawaan Control Center iOS (Portrait / Studio Light / Pengganti Latar) masih aktif
     var activeSystemEffectsDescription: String?
@@ -50,6 +56,9 @@ final class FacePoseCameraManager: NSObject {
 
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "com.sesihackton.camera.videoQueue", qos: .userInteractive)
+    /// Queue terpisah untuk konfigurasi session, supaya start/switch kamera
+    /// tidak antre di belakang pemrosesan frame (Vision) di `videoQueue`
+    private let sessionQueue = DispatchQueue(label: "com.sesihackton.camera.sessionQueue", qos: .userInitiated)
     nonisolated private static let rawCIContext: CIContext = {
         let sRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         return CIContext(options: [
@@ -60,7 +69,6 @@ final class FacePoseCameraManager: NSObject {
     }()
 
     // State internal yang diakses di videoQueue (nonisolated)
-    @ObservationIgnored nonisolated(unsafe) private var latestSampleBufferImage: UIImage?
     @ObservationIgnored nonisolated(unsafe) private var isProcessingFrame: Bool = false
     @ObservationIgnored nonisolated(unsafe) private var isHoldingSnapshot: Bool = false
     @ObservationIgnored nonisolated(unsafe) private var isCooldownActive: Bool = false
@@ -95,10 +103,93 @@ final class FacePoseCameraManager: NSObject {
         }
     }
 
-    private func configureAndStartSession() {
-        guard !isSessionRunning else { return }
+    /// Ganti kamera depan ↔ belakang.
+    /// Hanya menukar input kamera (seperti app Kamera bawaan), tanpa membongkar ulang seluruh session.
+    func switchCamera() {
+        guard !isStartingSession, !isSwitchingCamera else { return }
+        let newPosition: AVCaptureDevice.Position = cameraPosition == .front ? .back : .front
 
-        videoQueue.async { [weak self] in
+        // Reset progres hold & status jarak karena framing kamera berubah
+        isHoldingCaptureButton = false
+        isHoldingSnapshot = false
+        validHoldFrameCount = 0
+        holdProgress = 0.0
+        distanceStatus = .noFace
+
+        // Kamera belum jalan: cukup simpan posisi, dipakai saat session di-start
+        guard isSessionRunning else {
+            cameraPosition = newPosition
+            return
+        }
+
+        isSwitchingCamera = true
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+
+            guard let newDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: newPosition),
+                  let newInput = try? AVCaptureDeviceInput(device: newDevice) else {
+                Task { @MainActor in self.isSwitchingCamera = false }
+                return
+            }
+
+            let oldInputs = self.session.inputs
+            self.session.beginConfiguration()
+            oldInputs.forEach { self.session.removeInput($0) }
+
+            guard self.session.canAddInput(newInput) else {
+                // Gagal: kembalikan kamera lama
+                oldInputs.forEach { if self.session.canAddInput($0) { self.session.addInput($0) } }
+                self.session.commitConfiguration()
+                Task { @MainActor in self.isSwitchingCamera = false }
+                return
+            }
+
+            newInput.unifiedAutoExposureDefaultsEnabled = false
+            self.session.addInput(newInput)
+            if newInput.isCinematicVideoCaptureSupported {
+                newInput.isCinematicVideoCaptureEnabled = false
+            }
+            if let connection = self.videoOutput.connection(with: .video) {
+                Self.configureVideoConnection(connection, position: newPosition)
+            }
+            // Format & efek kamera di-set di dalam blok konfigurasi → cukup 1x restart pipeline
+            self.configureUnprocessedCameraHardware(for: newDevice)
+            self.session.commitConfiguration()
+
+            let activeEffects = self.detectActiveControlCenterEffects(for: newDevice)
+            Task { @MainActor in
+                self.cameraPosition = newPosition
+                self.isSwitchingCamera = false
+                self.activeSystemEffectsDescription = activeEffects
+            }
+        }
+    }
+
+    /// Rotasi portrait, mirror khusus kamera depan, dan stabilisasi off
+    nonisolated private static func configureVideoConnection(
+        _ connection: AVCaptureConnection,
+        position: AVCaptureDevice.Position
+    ) {
+        if connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90
+        }
+        // Mirror hanya untuk kamera depan (seperti cermin); kamera belakang tidak di-mirror
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = position == .front
+        }
+        // Matikan stabilisasi video agar frame tidak mengalami resampling/penghalusan piksel
+        if connection.isVideoStabilizationSupported {
+            connection.preferredVideoStabilizationMode = .off
+        }
+    }
+
+    private func configureAndStartSession() {
+        guard !isSessionRunning, !isStartingSession else { return }
+        isStartingSession = true
+        let position = cameraPosition
+
+        sessionQueue.async { [weak self] in
             guard let self else { return }
 
             // 1. Paksa Center Stage di bawah kendali aplikasi dan matikan sepenuhnya
@@ -118,7 +209,7 @@ final class FacePoseCameraManager: NSObject {
                 self.session.removeOutput(output)
             }
 
-            let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+            let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
                 ?? AVCaptureDevice.default(for: .video)
 
             guard let cameraDevice = device,
@@ -126,6 +217,7 @@ final class FacePoseCameraManager: NSObject {
                   self.session.canAddInput(input) else {
                 self.session.commitConfiguration()
                 Task { @MainActor in
+                    self.isStartingSession = false
                     self.cameraErrorMessage = "Kamera tidak ditemukan pada perangkat ini."
                 }
                 return
@@ -151,16 +243,7 @@ final class FacePoseCameraManager: NSObject {
             }
 
             if let connection = self.videoOutput.connection(with: .video) {
-                if connection.isVideoRotationAngleSupported(90) {
-                    connection.videoRotationAngle = 90
-                }
-                if cameraDevice.position == .front, connection.isVideoMirrored != true, connection.isVideoMirroringSupported {
-                    connection.isVideoMirrored = true
-                }
-                // Matikan stabilisasi video agar frame tidak mengalami resampling/penghalusan piksel
-                if connection.isVideoStabilizationSupported {
-                    connection.preferredVideoStabilizationMode = .off
-                }
+                Self.configureVideoConnection(connection, position: cameraDevice.position)
             }
 
             // Pilih format kamera mentah/natural dan matikan seluruh efek pemrosesan perangkat
@@ -173,8 +256,11 @@ final class FacePoseCameraManager: NSObject {
             self.session.startRunning()
 
             let activeEffects = self.detectActiveControlCenterEffects(for: cameraDevice)
+            let actualPosition = cameraDevice.position
             Task { @MainActor in
                 self.isSessionRunning = true
+                self.isStartingSession = false
+                self.cameraPosition = actualPosition
                 self.activeSystemEffectsDescription = activeEffects
             }
         }
@@ -337,7 +423,7 @@ final class FacePoseCameraManager: NSObject {
 
     func stopSession() {
         guard isSessionRunning else { return }
-        videoQueue.async { [weak self] in
+        sessionQueue.async { [weak self] in
             guard let self else { return }
             if self.session.isRunning {
                 self.session.stopRunning()
@@ -436,10 +522,6 @@ extension FacePoseCameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         isProcessingFrame = true
         defer { isProcessingFrame = false }
 
-        if let cgImage = Self.createCGImage(from: pixelBuffer) {
-            latestSampleBufferImage = UIImage(cgImage: cgImage)
-        }
-
         let request = VNDetectFaceRectanglesRequest()
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
         do {
@@ -487,7 +569,11 @@ extension FacePoseCameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         let progress = min(1.0, Double(validHoldFrameCount) / Double(requiredHoldFrames))
         let shouldTriggerCapture = validHoldFrameCount >= requiredHoldFrames && !isCooldownActive && isHoldingSnapshot
-        let capturedFrame = shouldTriggerCapture ? latestSampleBufferImage : nil
+        // Konversi frame resolusi penuh ke gambar HANYA saat benar-benar memotret,
+        // bukan di setiap frame (sangat berat di format 4K kamera belakang)
+        let capturedFrame: UIImage? = shouldTriggerCapture
+            ? Self.createCGImage(from: pixelBuffer).map { UIImage(cgImage: $0) }
+            : nil
 
         if shouldTriggerCapture {
             validHoldFrameCount = 0
@@ -523,7 +609,10 @@ struct CameraPreviewLayerView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PreviewUIView, context: Context) {
-        uiView.previewLayer.session = session
+        // Set ulang hanya bila berbeda: setter ini memicu re-konfigurasi session di main thread
+        if uiView.previewLayer.session !== session {
+            uiView.previewLayer.session = session
+        }
     }
 
     final class PreviewUIView: UIView {

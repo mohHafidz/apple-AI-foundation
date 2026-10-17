@@ -5,8 +5,8 @@
 //  Created by Training-57 on 16/10/26.
 //
 
-import SwiftUI
 import PhotosUI
+import SwiftUI
 
 struct ContentView: View {
     private enum AppStage {
@@ -41,12 +41,13 @@ struct ContentView: View {
     // Tanggal target untuk ekspor jadwal kalender (Default: Besok)
     @State private var targetCalendarDate: Date =
         Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-    
+
     @State private var pickedPhotoItems: [PhotosPickerItem] = []
     @State private var isImportingPhotos: Bool = false
-    
+
     private var remainingSidesCount: Int {
-        FaceSide.allCases.filter { cameraManager.capturedImages[$0] == nil }.count
+        FaceSide.allCases.filter { cameraManager.capturedImages[$0] == nil }
+            .count
     }
 
     var body: some View {
@@ -66,13 +67,18 @@ struct ContentView: View {
             .toolbar {
                 toolbarContent
             }
-            .alert("Belum Ada Riwayat Deteksi", isPresented: $showNoHistoryAlert) {
+            .alert(
+                "Belum Ada Riwayat Deteksi",
+                isPresented: $showNoHistoryAlert
+            ) {
                 Button("Jalankan Demo") {
                     runDemoSimulation()
                 }
                 Button("Batal", role: .cancel) {}
             } message: {
-                Text("Lakukan pemindaian wajah 3 sisi terlebih dahulu atau gunakan mode Demo untuk melihat rencana gaya hidup AI.")
+                Text(
+                    "Lakukan pemindaian wajah 3 sisi terlebih dahulu atau gunakan mode Demo untuk melihat rencana gaya hidup AI."
+                )
             }
             .onChange(of: cameraManager.isAllCaptured) { _, allDone in
                 if allDone && stage == .scanning {
@@ -81,19 +87,27 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showPhotoPreviewSheet) {
-                if let currentResult = scanResults.first(where: { $0.side == selectedSideFilter }) ?? scanResults.first {
+                if let currentResult = scanResults.first(where: {
+                    $0.side == selectedSideFilter
+                }) ?? scanResults.first {
                     NavigationStack {
                         ScrollView {
                             VStack(spacing: 16) {
-                                Image(uiImage: showAnnotations ? currentResult.annotatedImage : currentResult.originalImage)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .clipShape(.rect(cornerRadius: 16))
-                                    .padding(.horizontal)
+                                Image(
+                                    uiImage: showAnnotations
+                                        ? currentResult.annotatedImage
+                                        : currentResult.originalImage
+                                )
+                                .resizable()
+                                .scaledToFit()
+                                .clipShape(.rect(cornerRadius: 16))
+                                .padding(.horizontal)
 
-                                Text("Sisi \(currentResult.side.rawValue) • \(currentResult.detections.count) objek terdeteksi")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                                Text(
+                                    "Sisi \(currentResult.side.rawValue) • \(currentResult.detections.count) objek terdeteksi"
+                                )
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                             }
                             .padding(.vertical)
                         }
@@ -121,7 +135,8 @@ struct ContentView: View {
         case .analyzing:
             return "Menganalisis..."
         case .results:
-            return selectedResultTab == .aiPlan ? "Rencana Pemulihan AI" : "Hasil Deteksi Jerawat"
+            return selectedResultTab == .aiPlan
+                ? "Rencana Pemulihan AI" : "Hasil Deteksi Jerawat"
         }
     }
 
@@ -175,8 +190,8 @@ struct ContentView: View {
                 Button {
                     speechService.stop()
                     cameraManager.resetAllCaptures()
+                    // Kamera di-start oleh .onAppear di scannerScreen
                     stage = .scanning
-                    cameraManager.checkPermissionAndStart()
                 } label: {
                     Label("Scan Baru", systemImage: "camera.viewfinder")
                 }
@@ -188,8 +203,10 @@ struct ContentView: View {
                         showAnnotations.toggle()
                     } label: {
                         Label(
-                            showAnnotations ? "Sembunyikan Box" : "Tampilkan Box",
-                            systemImage: showAnnotations ? "viewfinder.circle.fill" : "viewfinder.circle"
+                            showAnnotations
+                                ? "Sembunyikan Box" : "Tampilkan Box",
+                            systemImage: showAnnotations
+                                ? "viewfinder.circle.fill" : "viewfinder.circle"
                         )
                     }
                     .accessibilityLabel("Toggle Bounding Box")
@@ -201,7 +218,10 @@ struct ContentView: View {
                             speechService.speakIndonesian(plan.ttsSummaryScript)
                         }
                     } label: {
-                        Image(systemName: speechService.isSpeaking ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        Image(
+                            systemName: speechService.isSpeaking
+                                ? "speaker.slash.fill" : "speaker.wave.2.fill"
+                        )
                     }
                     .accessibilityLabel("Kontrol Suara AI")
                 }
@@ -232,11 +252,20 @@ struct ContentView: View {
                 if cameraManager.isCameraAuthorized {
                     CameraPreviewLayerView(session: cameraManager.session)
                         .clipShape(.rect(cornerRadius: 24))
+                        // Blur singkat saat ganti kamera, seperti app Kamera bawaan
+                        .blur(radius: cameraManager.isSwitchingCamera ? 16 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: cameraManager.isSwitchingCamera)
                 } else {
                     ContentUnavailableView {
-                        Label("Kamera Tidak Tersedia", systemImage: "camera.fill")
+                        Label(
+                            "Kamera Tidak Tersedia",
+                            systemImage: "camera.fill"
+                        )
                     } description: {
-                        Text(cameraManager.cameraErrorMessage ?? "Berikan izin kamera di Pengaturan atau gunakan mode simulasi.")
+                        Text(
+                            cameraManager.cameraErrorMessage
+                                ?? "Berikan izin kamera di Pengaturan atau gunakan mode simulasi."
+                        )
                     } actions: {
                         Button("Coba Simulasi") {
                             runDemoSimulation()
@@ -276,13 +305,14 @@ struct ContentView: View {
             speechService.stop()
         }
     }
-    
+
     private func loadPickedPhotos(_ items: [PhotosPickerItem]) async {
         isImportingPhotos = true
         var images: [UIImage] = []
         for item in items {
             if let data = try? await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
+                let image = UIImage(data: data)
+            {
                 images.append(image)
             }
         }
@@ -312,16 +342,20 @@ struct ContentView: View {
             .padding(.top, 14)
             .padding(.horizontal, 16)
 
-            if let activeEffects = cameraManager.activeSystemEffectsDescription {
+            if let activeEffects = cameraManager.activeSystemEffectsDescription
+            {
                 Button {
                     cameraManager.openSystemVideoEffectsSettings()
                 } label: {
-                    Label("Efek \(activeEffects) Aktif • Ketuk untuk Matikan", systemImage: "wand.and.stars.inverse")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .glassEffect(.regular, in: .capsule)
+                    Label(
+                        "Efek \(activeEffects) Aktif • Ketuk untuk Matikan",
+                        systemImage: "wand.and.stars.inverse"
+                    )
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .glassEffect(.regular, in: .capsule)
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 4)
@@ -335,23 +369,34 @@ struct ContentView: View {
                         .stroke(
                             cameraManager.distanceStatus.tintColor,
                             style: StrokeStyle(
-                                lineWidth: cameraManager.distanceStatus == .optimal ? 4 : 3,
-                                dash: cameraManager.distanceStatus == .optimal ? [] : [10, 8]
+                                lineWidth: cameraManager.distanceStatus
+                                    == .optimal ? 4 : 3,
+                                dash: cameraManager.distanceStatus == .optimal
+                                    ? [] : [10, 8]
                             )
                         )
                         .frame(width: 220, height: 286)
-                        .animation(.easeInOut(duration: 0.2), value: cameraManager.distanceStatus)
+                        .animation(
+                            .easeInOut(duration: 0.2),
+                            value: cameraManager.distanceStatus
+                        )
 
                     if cameraManager.holdProgress > 0 {
                         Ellipse()
                             .trim(from: 0, to: cameraManager.holdProgress)
                             .stroke(
                                 Color.green,
-                                style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                                style: StrokeStyle(
+                                    lineWidth: 6,
+                                    lineCap: .round
+                                )
                             )
                             .frame(width: 230, height: 296)
                             .rotationEffect(.degrees(-90))
-                            .animation(.linear(duration: 0.1), value: cameraManager.holdProgress)
+                            .animation(
+                                .linear(duration: 0.1),
+                                value: cameraManager.holdProgress
+                            )
                     }
                 }
             }
@@ -366,8 +411,10 @@ struct ContentView: View {
 
                     if cameraManager.isHoldingCaptureButton {
                         if cameraManager.distanceStatus == .optimal {
-                            Text("Menahan... \(Int(cameraManager.holdProgress * 100))% (Jarak Ideal)")
-                                .font(.caption.weight(.semibold))
+                            Text(
+                                "Menahan... \(Int(cameraManager.holdProgress * 100))% (Jarak Ideal)"
+                            )
+                            .font(.caption.weight(.semibold))
                         } else {
                             Text(cameraManager.distanceStatus.title)
                                 .font(.caption.weight(.semibold))
@@ -413,31 +460,40 @@ struct ContentView: View {
                 ZStack {
                     Circle()
                         .strokeBorder(
-                            isOptimal ? Color.green.opacity(0.45) : Color.primary.opacity(0.25),
+                            isOptimal
+                                ? Color.green.opacity(0.45)
+                                : Color.primary.opacity(0.25),
                             lineWidth: 4
                         )
                         .frame(width: 78, height: 78)
-                    
+
                     if cameraManager.holdProgress > 0 {
                         Circle()
                             .trim(from: 0, to: cameraManager.holdProgress)
                             .stroke(
                                 Color.green,
-                                style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                                style: StrokeStyle(
+                                    lineWidth: 5,
+                                    lineCap: .round
+                                )
                             )
                             .frame(width: 78, height: 78)
                             .rotationEffect(.degrees(-90))
                     }
-                    
+
                     Circle()
                         .fill(isOptimal ? Color.green : Color.primary)
                         .frame(width: 62, height: 62)
                         .scaleEffect(isHolding ? 0.86 : 1.0)
                         .animation(.spring(duration: 0.2), value: isHolding)
-                    
-                    Image(systemName: isHolding ? "hand.tap.fill" : "camera.fill")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(isOptimal ? .white : Color(uiColor: .systemBackground))
+
+                    Image(
+                        systemName: isHolding ? "hand.tap.fill" : "camera.fill"
+                    )
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(
+                        isOptimal ? .white : Color(uiColor: .systemBackground)
+                    )
                 }
                 .contentShape(Circle())
                 .gesture(
@@ -449,22 +505,45 @@ struct ContentView: View {
                             cameraManager.setHoldingCaptureButton(false)
                         }
                 )
-                .accessibilityLabel("Tahan tombol untuk memotret sisi \(cameraManager.currentTargetSide.rawValue)")
-                .accessibilityHint("Pastikan jarak wajah ideal, tidak terlalu dekat dan tidak terlalu jauh")
-                
-                Text(
-                    isHolding
-                    ? (isOptimal ? "Tahan sebentar..." : "Sesuaikan jarak wajah sambil menahan")
-                    : "Tahan tombol untuk memotret \(cameraManager.currentTargetSide.rawValue)"
+                .accessibilityLabel(
+                    "Tahan tombol untuk memotret sisi \(cameraManager.currentTargetSide.rawValue)"
                 )
-                .font(.caption.weight(.medium))
-                .foregroundStyle(isHolding && !isOptimal ? .orange : .secondary)
+                .accessibilityHint(
+                    "Pastikan jarak wajah ideal, tidak terlalu dekat dan tidak terlalu jauh"
+                )
+
+                Button {
+                    cameraManager.switchCamera()
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath.camera")
+                        .font(.title3)
+                        .rotation3DEffect(
+                            .degrees(cameraManager.cameraPosition == .front ? 0 : 180),
+                            axis: (x: 0, y: 1, z: 0)
+                        )
+                        .animation(.easeInOut(duration: 0.3), value: cameraManager.cameraPosition)
+                        .frame(width: 52, height: 52)
+                    .glassEffect(.regular, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .disabled(!cameraManager.isCameraAuthorized || cameraManager.isSwitchingCamera)
+                .accessibilityLabel(
+                    cameraManager.cameraPosition == .front
+                        ? "Ganti ke kamera belakang"
+                        : "Ganti ke kamera depan"
+                )
             }
-            Color.clear.frame(width: 52, height: 52)
+            Text(
+                isHolding
+                    ? (isOptimal
+                        ? "Tahan sebentar..."
+                        : "Sesuaikan jarak wajah sambil menahan")
+                    : "Tahan tombol untuk memotret \(cameraManager.currentTargetSide.rawValue)"
+            )
+            .font(.caption.weight(.medium))
+            .foregroundStyle(isHolding && !isOptimal ? .orange : .secondary)
         }
     }
-    
-    
 
     private var capturedSidesStatusRow: some View {
         HStack(spacing: 10) {
@@ -485,9 +564,14 @@ struct ContentView: View {
                         } else {
                             Image(systemName: side.systemIcon)
                                 .font(.caption)
-                                .foregroundStyle(isSelected ? .primary : .secondary)
+                                .foregroundStyle(
+                                    isSelected ? .primary : .secondary
+                                )
                                 .frame(width: 32, height: 32)
-                                .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 6))
+                                .background(
+                                    Color(uiColor: .tertiarySystemFill),
+                                    in: .rect(cornerRadius: 6)
+                                )
                         }
 
                         VStack(alignment: .leading, spacing: 1) {
@@ -497,17 +581,30 @@ struct ContentView: View {
                                 .lineLimit(1)
                             Text(capturedImg != nil ? "Tersimpan" : "Belum")
                                 .font(.caption2)
-                                .foregroundStyle(capturedImg != nil ? .green : .secondary)
+                                .foregroundStyle(
+                                    capturedImg != nil ? .green : .secondary
+                                )
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(6)
                     .background(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                            .fill(
+                                Color(
+                                    uiColor: .secondarySystemGroupedBackground
+                                )
+                            )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                                RoundedRectangle(
+                                    cornerRadius: 10,
+                                    style: .continuous
+                                )
+                                .stroke(
+                                    isSelected
+                                        ? Color.accentColor : Color.clear,
+                                    lineWidth: 1.5
+                                )
                             )
                     )
                 }
@@ -525,11 +622,13 @@ struct ContentView: View {
             VStack(spacing: 6) {
                 Text("Menganalisis Wajah & Menyusun Rencana AI...")
                     .font(.headline)
-                Text("AcneCareAI sedang berkerja untuk memberikan saran spesial untuk kamu")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                Text(
+                    "AcneCareAI sedang berkerja untuk memberikan saran spesial untuk kamu"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -577,26 +676,34 @@ struct ContentView: View {
 
                     // Response 1: Panduan Nutrisi & Pola Hidup Markdown
                     VStack(alignment: .leading, spacing: 10) {
-                        Label("Panduan Pola Hidup & Nutrisi", systemImage: "leaf.fill")
-                            .font(.headline)
-                            .foregroundStyle(.green)
+                        Label(
+                            "Panduan Pola Hidup & Nutrisi",
+                            systemImage: "leaf.fill"
+                        )
+                        .font(.headline)
+                        .foregroundStyle(.green)
 
-                        Text(renderMarkdown(plan.detailedGuideMarkdown))
-                            .font(.body)
-                            .lineSpacing(4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        MarkdownTextView(plan.detailedGuideMarkdown)
                             .padding(14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14)
-                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                                    .fill(
+                                        Color(
+                                            uiColor:
+                                                .secondarySystemGroupedBackground
+                                        )
+                                    )
                             )
                     }
 
                     // Response 3: Rencana Jadwal Harian & Apple Calendar
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Label("Jadwal Harian Rekomendasi", systemImage: "calendar.badge.clock")
-                                .font(.headline)
+                            Label(
+                                "Jadwal Harian Rekomendasi",
+                                systemImage: "calendar.badge.clock"
+                            )
+                            .font(.headline)
                             Spacer()
                             DatePicker(
                                 "Target:",
@@ -618,15 +725,19 @@ struct ContentView: View {
                             HStack(spacing: 8) {
                                 Button {
                                     Task {
-                                        await calendarService.exportSchedulesToAppleCalendar(
-                                            plan.dailySchedules,
-                                            targetDate: targetCalendarDate
-                                        )
+                                        await calendarService
+                                            .exportSchedulesToAppleCalendar(
+                                                plan.dailySchedules,
+                                                targetDate: targetCalendarDate
+                                            )
                                     }
                                 } label: {
-                                    Label("Simpan ke Apple Calendar", systemImage: "calendar.badge.plus")
-                                        .font(.subheadline.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
+                                    Label(
+                                        "Simpan ke Apple Calendar",
+                                        systemImage: "calendar.badge.plus"
+                                    )
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .tint(.green)
@@ -644,7 +755,10 @@ struct ContentView: View {
                             if !calendarService.exportMessage.isEmpty {
                                 Text(calendarService.exportMessage)
                                     .font(.caption)
-                                    .foregroundStyle(calendarService.isExportSuccess ? .green : .orange)
+                                    .foregroundStyle(
+                                        calendarService.isExportSuccess
+                                            ? .green : .orange
+                                    )
                             }
                         }
                         .padding(.top, 4)
@@ -675,7 +789,9 @@ struct ContentView: View {
                     ContentUnavailableView(
                         "Belum Ada Rencana AI",
                         systemImage: "sparkles",
-                        description: Text("Lakukan pemindaian wajah atau jalankan demo untuk membuat rencana pola hidup AI.")
+                        description: Text(
+                            "Lakukan pemindaian wajah atau jalankan demo untuk membuat rencana pola hidup AI."
+                        )
                     )
                     .padding(.vertical, 50)
                 }
@@ -688,30 +804,59 @@ struct ContentView: View {
     // MARK: - Tab Konten: Hasil Deteksi Wajah CoreML
     private var detectionResultsView: some View {
         List {
-            if let currentResult = scanResults.first(where: { $0.side == selectedSideFilter }) ?? scanResults.first {
+            if let currentResult = scanResults.first(where: {
+                $0.side == selectedSideFilter
+            }) ?? scanResults.first {
+                if let warning = currentResult.exposureStatus.warning(
+                    for: currentResult.side
+                ) {
+                    Label(
+                        warning,
+                        systemImage: "sun.max.trianglebadge.exclamationmark"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(
+                        currentResult.exposureStatus == .overexposed
+                            ? .red : .orange
+                    )
+                }
+                
                 Section {
                     VStack(spacing: 12) {
-                        Picker("Pilih Sisi Wajah", selection: $selectedSideFilter) {
+                        Picker(
+                            "Pilih Sisi Wajah",
+                            selection: $selectedSideFilter
+                        ) {
                             ForEach(FaceSide.allCases) { side in
-                                let count = scanResults.first(where: { $0.side == side })?.detections.count ?? 0
+                                let count =
+                                    scanResults.first(where: { $0.side == side }
+                                    )?.detections.count ?? 0
                                 Text("\(side.rawValue) (\(count))")
                                     .tag(side)
                             }
                         }
                         .pickerStyle(.segmented)
 
-                        Image(uiImage: showAnnotations ? currentResult.annotatedImage : currentResult.originalImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 340)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(.rect(cornerRadius: 14))
+                        Image(
+                            uiImage: showAnnotations
+                                ? currentResult.annotatedImage
+                                : currentResult.originalImage
+                        )
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 340)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(.rect(cornerRadius: 14))
 
                         Button {
                             showPhotoPreviewSheet = true
                         } label: {
-                            Label("Perbesar Foto Sisi \(currentResult.side.rawValue)", systemImage: "arrow.up.left.and.arrow.down.right")
-                                .font(.footnote.weight(.medium))
+                            Label(
+                                "Perbesar Foto Sisi \(currentResult.side.rawValue)",
+                                systemImage:
+                                    "arrow.up.left.and.arrow.down.right"
+                            )
+                            .font(.footnote.weight(.medium))
                         }
                     }
                     .padding(.vertical, 4)
@@ -721,24 +866,40 @@ struct ContentView: View {
 
                 Section {
                     if currentResult.detections.isEmpty {
-                        Label("Tidak ditemukan jerawat pada sisi \(currentResult.side.rawValue).", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                        Label(
+                            "Tidak ditemukan jerawat pada sisi \(currentResult.side.rawValue).",
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .foregroundStyle(.green)
                     } else {
-                        ForEach(Array(currentResult.detections.enumerated()), id: \.element.id) { index, detection in
-                            detectionHIGRow(index: index + 1, detection: detection)
+                        ForEach(
+                            Array(currentResult.detections.enumerated()),
+                            id: \.element.id
+                        ) { index, detection in
+                            detectionHIGRow(
+                                index: index + 1,
+                                detection: detection
+                            )
                         }
                     }
                 } header: {
-                    Text("Hasil Identifikasi Objek (\(currentResult.side.rawValue))")
+                    Text(
+                        "Hasil Identifikasi Objek (\(currentResult.side.rawValue))"
+                    )
                 } footer: {
-                    Text("Setiap objek menampilkan daftar kemungkinan dari model CoreML dengan persentase keyakinan tertinggi.")
+                    Text(
+                        "Setiap objek menampilkan daftar kemungkinan dari model CoreML dengan persentase keyakinan tertinggi."
+                    )
                 }
             }
 
             Section("Kategori & Warna Bounding Box") {
                 let allDetections = scanResults.flatMap(\.detections)
-                ForEach([AcneType.whitehead, .pustule, .papule, .nodule, .blackhead]) { type in
-                    let count = allDetections.filter { $0.topType == type }.count
+                ForEach([
+                    AcneType.whitehead, .pustule, .papule, .nodule, .blackhead,
+                ]) { type in
+                    let count = allDetections.filter { $0.topType == type }
+                        .count
                     HStack(spacing: 12) {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(type.color)
@@ -759,7 +920,9 @@ struct ContentView: View {
         .listStyle(.insetGrouped)
     }
 
-    private func detectionHIGRow(index: Int, detection: AcneDetection) -> some View {
+    private func detectionHIGRow(index: Int, detection: AcneDetection)
+        -> some View
+    {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 HStack(spacing: 8) {
@@ -773,17 +936,21 @@ struct ContentView: View {
 
                 Spacer()
 
-                Text("Dipilih: \(detection.topType.shortName) (\(detection.topPercentageInt)%)")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(detection.topType.color.opacity(0.16), in: .capsule)
-                    .foregroundStyle(detection.topType.color)
+                Text(
+                    "Dipilih: \(detection.topType.shortName) (\(detection.topPercentageInt)%)"
+                )
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(detection.topType.color.opacity(0.16), in: .capsule)
+                .foregroundStyle(detection.topType.color)
             }
 
             VStack(alignment: .leading, spacing: 0) {
                 let candidates = Array(detection.allCandidates.prefix(3))
-                ForEach(Array(candidates.enumerated()), id: \.element.id) { idx, candidate in
+                ForEach(Array(candidates.enumerated()), id: \.element.id) {
+                    idx,
+                    candidate in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
                             Text(candidate.label)
@@ -815,7 +982,10 @@ struct ContentView: View {
                     .fill(Color(uiColor: .tertiarySystemBackground))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(detection.topType.color.opacity(0.65), lineWidth: 1.5)
+                            .stroke(
+                                detection.topType.color.opacity(0.65),
+                                lineWidth: 1.5
+                            )
                     )
             )
         }
@@ -826,14 +996,24 @@ struct ContentView: View {
     private var detectedAcneItemsFromScan: [DetectedAcneItem] {
         var items: [DetectedAcneItem] = []
         for result in scanResults {
-            var countsByType: [AcneType: (count: Int, totalConfidence: Float)] = [:]
+            var countsByType: [AcneType: (count: Int, totalConfidence: Float)] =
+                [:]
             for detection in result.detections {
-                let current = countsByType[detection.topType] ?? (count: 0, totalConfidence: 0)
-                countsByType[detection.topType] = (count: current.count + 1, totalConfidence: current.totalConfidence + detection.topConfidence)
+                let current =
+                    countsByType[detection.topType] ?? (
+                        count: 0, totalConfidence: 0
+                    )
+                countsByType[detection.topType] = (
+                    count: current.count + 1,
+                    totalConfidence: current.totalConfidence
+                        + detection.topConfidence
+                )
             }
 
             for (type, data) in countsByType {
-                let avgConfidence = Double(data.totalConfidence / Float(data.count))
+                let avgConfidence = Double(
+                    data.totalConfidence / Float(data.count)
+                )
                 items.append(
                     DetectedAcneItem(
                         acneType: type.displayName,
@@ -866,7 +1046,9 @@ struct ContentView: View {
 
         let imagesToAnalyze = cameraManager.capturedImages
         Task {
-            let results = await AcneAnalyzerService.shared.analyzeAllSides(capturedImages: imagesToAnalyze)
+            let results = await AcneAnalyzerService.shared.analyzeAllSides(
+                capturedImages: imagesToAnalyze
+            )
             self.scanResults = results
             self.selectedSideFilter = results.first?.side ?? .front
 
@@ -903,18 +1085,6 @@ struct ContentView: View {
                 }
             }
         }
-    }
-
-    private func renderMarkdown(_ rawMarkdown: String) -> AttributedString {
-        if let attributed = try? AttributedString(
-            markdown: rawMarkdown,
-            options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace
-            )
-        ) {
-            return attributed
-        }
-        return AttributedString(rawMarkdown)
     }
 }
 

@@ -5,6 +5,8 @@
 //  Created by Antigravity on 16/10/26.
 //
 
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import CoreML
 import UIKit
 import Vision
@@ -13,6 +15,8 @@ import Vision
 /// dan menggambar bounding box berwarna sesuai jenis jerawat dengan persentase tertinggi.
 final class AcneAnalyzerService {
     static let shared = AcneAnalyzerService()
+
+    private let ciContext = CIContext()
 
     private var vnModel: VNCoreMLModel?
 
@@ -28,12 +32,16 @@ final class AcneAnalyzerService {
             let visionModel = try VNCoreMLModel(for: coreMLModel)
             self.vnModel = visionModel
         } catch {
-            print("Gagal memuat model best_yolo_acne: \(error.localizedDescription)")
+            print(
+                "Gagal memuat model best_yolo_acne: \(error.localizedDescription)"
+            )
         }
     }
 
     /// Analisis ketiga sisi wajah dan kembalikan array `FaceSideScanResult`
-    func analyzeAllSides(capturedImages: [FaceSide: UIImage]) async -> [FaceSideScanResult] {
+    func analyzeAllSides(capturedImages: [FaceSide: UIImage]) async
+        -> [FaceSideScanResult]
+    {
         var results: [FaceSideScanResult] = []
         for side in FaceSide.allCases {
             if let image = capturedImages[side] {
@@ -47,13 +55,34 @@ final class AcneAnalyzerService {
     /// Analisis 1 gambar wajah menggunakan Vision + CoreML
     func analyze(image: UIImage, side: FaceSide) async -> FaceSideScanResult {
         let normalizedImage = image.normalizedUpImage()
-        let detections = await detectAcne(in: normalizedImage)
-        let annotated = Self.drawBoundingBoxes(on: normalizedImage, detections: detections)
+        //        let detections = await detectAcne(in: normalizedImage)
+        //        let annotated = Self.drawBoundingBoxes(on: normalizedImage, detections: detections)
+
+        let stats =
+            normalizedImage.exposureStats()
+            ?? ExposureStats(meanLuminance: 0.5, clippedFraction: 0)
+        let status = ExposureStatus.classify(
+            mean: stats.meanLuminance,
+            clippedFraction: stats.clippedFraction
+        )
+
+        let prepared = normalizedImage.overexposureCorrected(
+            stats: stats,
+            status: status,
+            context: ciContext
+        )
+        let detections = await detectAcne(in: prepared)
+        let annotated = Self.drawBoundingBoxes(
+            on: prepared,
+            detections: detections
+        )
+
         return FaceSideScanResult(
             side: side,
             originalImage: normalizedImage,
             annotatedImage: annotated,
-            detections: detections
+            detections: detections,
+            exposureStatus: status
         )
     }
 
@@ -66,7 +95,10 @@ final class AcneAnalyzerService {
 
         return await withCheckedContinuation { continuation in
             let request = VNCoreMLRequest(model: vnModel) { request, _ in
-                guard let observations = request.results as? [VNRecognizedObjectObservation] else {
+                guard
+                    let observations = request.results
+                        as? [VNRecognizedObjectObservation]
+                else {
                     continuation.resume(returning: [])
                     return
                 }
@@ -74,11 +106,16 @@ final class AcneAnalyzerService {
                 var detectedItems: [AcneDetection] = []
                 for obs in observations {
                     // Urutkan semua kemungkinan klasifikasi dari persentase paling tinggi
-                    let sortedLabels = obs.labels.sorted { $0.confidence > $1.confidence }
+                    let sortedLabels = obs.labels.sorted {
+                        $0.confidence > $1.confidence
+                    }
                     guard let bestLabel = sortedLabels.first else { continue }
 
                     let candidates = sortedLabels.map {
-                        AcneClassCandidate(label: $0.identifier, confidence: $0.confidence)
+                        AcneClassCandidate(
+                            label: $0.identifier,
+                            confidence: $0.confidence
+                        )
                     }
 
                     // Konversi koordinat Vision (origin di kiri-bawah) ke UIKit (origin di kiri-atas)
@@ -107,7 +144,11 @@ final class AcneAnalyzerService {
 
             request.imageCropAndScaleOption = .scaleFill
 
-            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
+            let handler = VNImageRequestHandler(
+                cgImage: cgImage,
+                orientation: .up,
+                options: [:]
+            )
             do {
                 try handler.perform([request])
             } catch {
@@ -118,7 +159,10 @@ final class AcneAnalyzerService {
     }
 
     /// Menggambar bounding box dengan warna berbeda sesuai jenis jerawat + label persentase tertinggi
-    static func drawBoundingBoxes(on image: UIImage, detections: [AcneDetection]) -> UIImage {
+    static func drawBoundingBoxes(
+        on image: UIImage,
+        detections: [AcneDetection]
+    ) -> UIImage {
         let size = image.size
         guard size.width > 0, size.height > 0 else { return image }
 
@@ -147,7 +191,10 @@ final class AcneAnalyzerService {
                 // Fill semi-transparan di dalam bounding box
                 cgContext.saveGState()
                 cgContext.setFillColor(color.withAlphaComponent(0.18).cgColor)
-                let roundedBox = UIBezierPath(roundedRect: boxRect, cornerRadius: strokeWidth * 1.5)
+                let roundedBox = UIBezierPath(
+                    roundedRect: boxRect,
+                    cornerRadius: strokeWidth * 1.5
+                )
                 cgContext.addPath(roundedBox.cgPath)
                 cgContext.fillPath()
 
@@ -159,12 +206,16 @@ final class AcneAnalyzerService {
                 cgContext.restoreGState()
 
                 // Teks label: "#1 whitehead 91%"
-                let labelString = "#\(index + 1) \(detection.topType.shortName) \(detection.topPercentageInt)%"
+                let labelString =
+                    "#\(index + 1) \(detection.topType.shortName) \(detection.topPercentageInt)%"
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: UIFont.systemFont(ofSize: fontSize, weight: .bold),
-                    .foregroundColor: UIColor.white
+                    .foregroundColor: UIColor.white,
                 ]
-                let attributed = NSAttributedString(string: labelString, attributes: attributes)
+                let attributed = NSAttributedString(
+                    string: labelString,
+                    attributes: attributes
+                )
                 let textSize = attributed.size()
 
                 let padX: CGFloat = 8
@@ -181,8 +232,16 @@ final class AcneAnalyzerService {
                     badgeX = max(4, size.width - badgeWidth - 4)
                 }
 
-                let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeWidth, height: badgeHeight)
-                let badgePath = UIBezierPath(roundedRect: badgeRect, cornerRadius: 6)
+                let badgeRect = CGRect(
+                    x: badgeX,
+                    y: badgeY,
+                    width: badgeWidth,
+                    height: badgeHeight
+                )
+                let badgePath = UIBezierPath(
+                    roundedRect: badgeRect,
+                    cornerRadius: 6
+                )
 
                 cgContext.saveGState()
                 cgContext.setFillColor(color.withAlphaComponent(0.92).cgColor)
@@ -196,6 +255,11 @@ final class AcneAnalyzerService {
     }
 }
 
+struct ExposureStats {
+    let meanLuminance: Double
+    let clippedFraction: Double
+}
+
 extension UIImage {
     /// Menormalisasi orientasi gambar ke `.up` agar koordinat Vision & UIKit selalu presisi
     func normalizedUpImage() -> UIImage {
@@ -205,5 +269,91 @@ extension UIImage {
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             draw(in: CGRect(origin: .zero, size: size))
         }
+    }
+
+    /// Ukur kecerahan rata-rata + porsi piksel mentok putih di area tengah foto.
+    /// Panggil SETELAH normalizedUpImage().
+    func exposureStats(sampleSize: Int = 96) -> ExposureStats? {
+        guard let fullCG = cgImage else { return nil }
+
+        let ratio = LightingConfig.centerCropRatio
+        let cropRect = CGRect(
+            x: CGFloat(fullCG.width) * (1 - ratio) / 2,
+            y: CGFloat(fullCG.height) * (1 - ratio) / 2,
+            width: CGFloat(fullCG.width) * ratio,
+            height: CGFloat(fullCG.height) * ratio
+        ).integral
+        let cg = fullCG.cropping(to: cropRect) ?? fullCG
+
+        let w = sampleSize
+        let h = sampleSize
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard
+                let ctx = CGContext(
+                    data: buffer.baseAddress,
+                    width: w,
+                    height: h,
+                    bitsPerComponent: 8,
+                    bytesPerRow: w * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                )
+            else { return false }
+            ctx.interpolationQuality = .medium
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard drawn else { return nil }
+
+        var total = 0.0
+        var clipped = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let luma =
+                (0.299 * Double(pixels[i])
+                    + 0.587 * Double(pixels[i + 1])
+                    + 0.114 * Double(pixels[i + 2])) / 255
+            total += luma
+            if luma > LightingConfig.clippedLumaLevel { clipped += 1 }
+        }
+        let count = Double(w * h)
+        return ExposureStats(
+            meanLuminance: total / count,
+            clippedFraction: Double(clipped) / count
+        )
+    }
+
+    /// Gelapin + tekan highlight kalau foto terlalu terang
+    func overexposureCorrected(
+        stats: ExposureStats,
+        status: ExposureStatus,
+        context: CIContext
+    ) -> UIImage {
+        guard status != .normal, let ciImage = CIImage(image: self) else {
+            return self
+        }
+
+        // Turunin exposure (EV negatif)
+        let exposure = CIFilter.exposureAdjust()
+        exposure.inputImage = ciImage
+        exposure.ev = Float(
+            max(
+                -LightingConfig.maxReduceEV,
+                log2(LightingConfig.targetLuminance / stats.meanLuminance)
+            )
+        )
+        var output = exposure.outputImage ?? ciImage
+
+        // Tekan highlight biar area silau (dahi/hidung berminyak) nggak dominan
+        let highlights = CIFilter.highlightShadowAdjust()
+        highlights.inputImage = output
+        highlights.highlightAmount = LightingConfig.highlightAmount
+        highlights.shadowAmount = 0
+        output = highlights.outputImage ?? output
+
+        guard let cg = context.createCGImage(output, from: ciImage.extent)
+        else { return self }
+        return UIImage(cgImage: cg, scale: scale, orientation: .up)
     }
 }
