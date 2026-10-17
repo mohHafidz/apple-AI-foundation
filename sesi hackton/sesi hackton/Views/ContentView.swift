@@ -427,6 +427,40 @@ struct ContentView: View {
 
     private var resultsScreen: some View {
         List {
+            // Section Utama: Hubungkan ke Foundation LLM + Calendar + TTS
+            Section {
+                NavigationLink {
+                    MainDashboardView(initialDetections: detectedAcneItemsFromScan)
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "sparkles")
+                            .font(.title2)
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(
+                                LinearGradient(
+                                    colors: [.green, .mint],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 12)
+                            )
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Buat Rencana Pemulihan AI")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text("Panduan nutrisi, jadwal Apple Calendar, dan ringkasan suara")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            } header: {
+                Text("Langkah Selanjutnya")
+            }
+
             // Section 1: Pilih Sisi Wajah & Foto Hasil Bounding Box
             if let currentResult = scanResults.first(where: { $0.side == selectedSideFilter }) ?? scanResults.first {
                 Section {
@@ -562,6 +596,42 @@ struct ContentView: View {
             )
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Konversi Hasil Deteksi YOLO ke AcneDetectionInput (Untuk Foundation LLM)
+    private var detectedAcneItemsFromScan: [DetectedAcneItem] {
+        var items: [DetectedAcneItem] = []
+        for result in scanResults {
+            var countsByType: [AcneType: (count: Int, totalConfidence: Float)] = [:]
+            for detection in result.detections {
+                let current = countsByType[detection.topType] ?? (count: 0, totalConfidence: 0)
+                countsByType[detection.topType] = (count: current.count + 1, totalConfidence: current.totalConfidence + detection.topConfidence)
+            }
+
+            for (type, data) in countsByType {
+                let avgConfidence = Double(data.totalConfidence / Float(data.count))
+                items.append(
+                    DetectedAcneItem(
+                        acneType: type.displayName,
+                        facialArea: result.side.rawValue,
+                        count: data.count,
+                        confidence: avgConfidence
+                    )
+                )
+            }
+        }
+
+        if items.isEmpty {
+            items.append(
+                DetectedAcneItem(
+                    acneType: "Kondisi Kulit Bersih",
+                    facialArea: "Seluruh Wajah",
+                    count: 0,
+                    confidence: 0.99
+                )
+            )
+        }
+        return items
     }
 
     // MARK: - Actions

@@ -5,10 +5,15 @@
 //  Created by Training-58 on 17/10/26.
 //
 
-import AppKit
 import Combine
 import EventKit
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
+#if canImport(AppKit)
+import AppKit
+#endif
 
 @MainActor
 final class CalendarService: ObservableObject {
@@ -26,17 +31,23 @@ final class CalendarService: ObservableObject {
         isExportSuccess = false
 
         do {
-            let granted = try await eventStore.requestFullAccessToEvents()
+            let granted: Bool
+            if #available(iOS 17.0, macOS 14.0, *) {
+                granted = try await eventStore.requestFullAccessToEvents()
+            } else {
+                granted = try await eventStore.requestAccess(to: .event)
+            }
+
             guard granted else {
                 exportMessage =
-                    "⚠️ Izin Kalender ditolak. Buka System Settings > Privacy & Security > Calendars dan aktifkan AcneCareAI."
+                    "⚠️ Izin Kalender ditolak. Buka Pengaturan > Privasi & Keamanan > Kalender dan aktifkan izin aplikasi."
                 return
             }
 
             guard let targetCalendar = eventStore.defaultCalendarForNewEvents
             else {
                 exportMessage =
-                    "⚠️ Tidak menemukan kalender default di Mac Anda."
+                    "⚠️ Tidak menemukan kalender default di perangkat Anda."
                 return
             }
 
@@ -66,7 +77,7 @@ final class CalendarService: ObservableObject {
                         to: startDate
                     )
 
-                    // Pasang pengingat otomatis 10 menit sebelum jam makan/olahraga
+                    // Pasang pengingat otomatis 10 menit sebelum jam kegiatan
                     let alarm = EKAlarm(relativeOffset: -600)
                     event.addAlarm(alarm)
 
@@ -90,8 +101,13 @@ final class CalendarService: ObservableObject {
         }
     }
 
-    /// Membuka aplikasi Apple Calendar bawaan macOS secara langsung
+    /// Membuka aplikasi Apple Calendar bawaan secara langsung
     func openAppleCalendarApp() {
+        #if canImport(UIKit)
+        if let url = URL(string: "calshow:") {
+            UIApplication.shared.open(url)
+        }
+        #elseif canImport(AppKit)
         if let url = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: "com.apple.iCal"
         ) {
@@ -100,6 +116,7 @@ final class CalendarService: ObservableObject {
                 configuration: NSWorkspace.OpenConfiguration()
             )
         }
+        #endif
     }
 
     private func emojiForCategory(_ category: String) -> String {

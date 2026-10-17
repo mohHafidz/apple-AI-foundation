@@ -69,7 +69,7 @@ struct TTSBannerView: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(
